@@ -59,11 +59,11 @@ const grafana20191216 = {
         '\n\n<p>As Grafana Labs continues to grow, we&rsquo;d like you to get to know the team members who are building the cool stuff you&rsquo;re using. Check out the latest of our Friday team profiles.</p>\n\n<h2 id="meet-ward">Meet Ward!</h2>\n\n<p><strong>Name:</strong> Ward...',
     },
   ],
-  feedUrl: 'https://grafana.com/blog/index.xml',
+  feedUrl: 'https://pominirollingmills.com/en/feed/index.xml',
   title: 'Blog on Grafana Labs',
   description: 'Recent content in Blog on Grafana Labs',
   generator: 'Hugo -- gohugo.io',
-  link: 'https://grafana.com/blog/',
+  link: 'https://pominirollingmills.com/en/feed/',
   language: 'en-us',
   lastBuildDate: 'Fri, 13 Dec 2019 00:00:00 +0000',
 } as Feed;
