@@ -51,6 +51,13 @@ export const fieldColorModeRegistry = new Registry<FieldColorMode>(() => {
       },
     }),
     new FieldColorSchemeMode({
+      id: 'continuous-blue',
+      name: 'Pomini Blue',
+      isContinuous: true,
+      isByValue: true,
+      getColors: (theme: GrafanaTheme2) => ['#aac7e3', '#87b5e0', '#639ed2', '#468ec2', '#4a7aa6', '#2f5575'],
+    }),
+    new FieldColorSchemeMode({
       id: 'continuous-GrYlRd',
       name: 'Green-Yellow-Red',
       isContinuous: true,
