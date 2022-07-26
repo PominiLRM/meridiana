@@ -1,3 +1,5 @@
+![Meridiana](public/img/pomini_icon.png)
+
 ![Grafana](docs/logo-horizontal.png)
 
 The open-source platform for monitoring and observability
