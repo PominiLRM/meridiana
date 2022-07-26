@@ -16,7 +16,7 @@ export const Comment = ({ message }: Props) => {
 
   let senderColor = '#34BA18';
   let senderName = 'System';
-  let avatarUrl = '/public/img/pomini_icon.svg';
+  let avatarUrl = '/public/img/pomini_icon.png';
   if (message.userId > 0) {
     senderColor = '#19a2e7';
     senderName = message.user.login;

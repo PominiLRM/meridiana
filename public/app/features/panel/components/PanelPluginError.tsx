@@ -74,7 +74,7 @@ export function getPanelPluginNotFound(id: string, silent?: boolean): PanelPlugi
       links: [],
       logos: {
         large: '',
-        small: 'public/img/pomini_icon.svg',
+        small: 'public/img/pomini_icon.png',
       },
       screenshots: [],
       updated: '',
