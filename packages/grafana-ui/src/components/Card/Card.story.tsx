@@ -10,7 +10,7 @@ import { TagList } from '../Tags/TagList';
 import { Card } from './Card';
 import mdx from './Card.mdx';
 
-const logo = 'https://grafana.com/static/assets/img/apple-touch-icon.png';
+const logo = 'https://grafana.com/static/assets/img/pomini-icon.png';
 
 const meta: ComponentMeta<typeof Card> = {
   title: 'General/Card',

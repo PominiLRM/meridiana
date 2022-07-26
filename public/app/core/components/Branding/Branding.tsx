@@ -10,7 +10,7 @@ export interface BrandComponentProps {
 }
 
 const LoginLogo: FC<BrandComponentProps> = ({ className }) => {
-  return <img className={className} src="public/img/pomini_icon.svg" alt="Grafana" />;
+  return <img className={className} src="public/img/pomini_icon.png" alt="Meridiana" />;
 };
 
 const LoginBackground: FC<BrandComponentProps> = ({ className, children }) => {
@@ -43,7 +43,7 @@ const LoginBackground: FC<BrandComponentProps> = ({ className, children }) => {
 };
 
 const MenuLogo: FC<BrandComponentProps> = ({ className }) => {
-  return <img className={className} src="public/img/pomini_icon.svg" alt="Grafana" />;
+  return <img className={className} src="public/img/pomini_icon.png" alt="Meridiana" />;
 };
 
 const LoginBoxBackground = () => {
@@ -59,8 +59,8 @@ export class Branding {
   static LoginBackground = LoginBackground;
   static MenuLogo = MenuLogo;
   static LoginBoxBackground = LoginBoxBackground;
-  static AppTitle = 'Grafana';
-  static LoginTitle = 'Welcome to Grafana';
+  static AppTitle = 'Meridiana';
+  static LoginTitle = 'Welcome to Meridiana';
   static GetLoginSubTitle = (): null | string => {
     return null;
   };
