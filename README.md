@@ -1,5 +1,7 @@
 
-<img src="public/img/pomini_icon.png" width=10% height=10% style="float: left"><h1 style="float: right;">MERIDIANA</h1>based on<img src="docs/logo-horizontal.png" width=20% height=20%>
+<img src="public/img/pomini_icon.png" align=left width=10% height=10%> <h1>MERIDIANA</h1>
+based on</p><img src="docs/logo-horizontal.png" width=20% height=20%>
+
 
 The open-source platform for monitoring and observability
 
