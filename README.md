@@ -1,7 +1,5 @@
 
-<img src="public/img/pomini_icon.png" align=left width=10% height=10%> <h1>MERIDIANA</h1>
-based on</p><img src="docs/logo-horizontal.png" width=20% height=20%>
-
+<img src="public/img/meridiana.png">  
 
 The open-source platform for monitoring and observability
 
@@ -22,6 +20,69 @@ Grafana allows you to query, visualize, alert on and understand your metrics no 
 
 The Grafana documentation is available at [grafana.com/docs](https://grafana.com/docs/).
 
+## Developer environment
+
+SO: Ubuntu  
+
+### GO
+
+sudo add-apt-repository ppa:longsleep/golang-backports
+sudo apt update
+sudo apt install golang-go
+
+go --version
+
+### Nodejs LTS
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+node --version
+
+### optional
+apt install npm
+npm install -g yarn
+
+yarn dlx @yarnpkg/sdks vscode
+
+### Yarn
+apt-get install yarn
+
+yarn --version
+
+### git
+apt-get install git
+
+git --version
+
+
+### grafana sources
+sudo su
+
+yarn install --immutable
+yarn start
+
+sudo apt install make
+
+make run
+
+ulimit -S -n 4096
+
+
+### Docker
+
+apt install docker.io
+
+docker --version
+
+systemctl start docker
+
+systemctl enable docker
+
+### Info
+
+https://grafana.com/docs/grafana/latest/installation/docker/?msclkid=7ff4adaec54911ec80ec13ed85010633
+
+
 ## License
 
-Grafana is distributed under [AGPL-3.0-only](LICENSE).
+Meridiana is distributed under [AGPL-3.0-only](LICENSE).
