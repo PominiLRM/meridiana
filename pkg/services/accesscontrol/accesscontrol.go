@@ -26,6 +26,12 @@ type Service interface {
 	registry.ProvidesUsageStats
 	// GetUserPermissions returns user permissions with only action and scope fields set.
 	GetUserPermissions(ctx context.Context, user *user.SignedInUser, options Options) ([]Permission, error)
+	// SearchUsersPermissions returns all users' permissions filtered by an action prefix
+	SearchUsersPermissions(ctx context.Context, user *user.SignedInUser, orgID int64, options SearchOptions) (map[int64][]Permission, error)
+	// ClearUserPermissionCache removes the permission cache entry for the given user
+	ClearUserPermissionCache(user *user.SignedInUser)
+	// SearchUserPermissions returns single user's permissions filtered by an action prefix or an action
+	SearchUserPermissions(ctx context.Context, orgID int64, filterOptions SearchOptions) ([]Permission, error)
 	// DeleteUserPermissions removes all permissions user has in org and all permission to that user
 	// If orgID is set to 0 remove permissions from all orgs
 	DeleteUserPermissions(ctx context.Context, orgID, userID int64) error
@@ -45,10 +51,11 @@ type Options struct {
 	ReloadCache bool
 }
 
-type Store interface {
-	// GetUserPermissions returns user permissions with only action and scope fields set.
-	GetUserPermissions(ctx context.Context, query GetUserPermissionsQuery) ([]Permission, error)
-	DeleteUserPermissions(ctx context.Context, orgID, userID int64) error
+type SearchOptions struct {
+	ActionPrefix string // Needed for the PoC v1, it's probably going to be removed.
+	Action       string
+	Scope        string
+	UserID       int64 // ID for the user for which to return information, if none is specified information is returned for all users.
 }
 
 type TeamPermissionsService interface {
@@ -93,7 +100,7 @@ type User struct {
 }
 
 // HasGlobalAccess checks user access with globally assigned permissions only
-func HasGlobalAccess(ac AccessControl, c *models.ReqContext) func(fallback func(*models.ReqContext) bool, evaluator Evaluator) bool {
+func HasGlobalAccess(ac AccessControl, service Service, c *models.ReqContext) func(fallback func(*models.ReqContext) bool, evaluator Evaluator) bool {
 	return func(fallback func(*models.ReqContext) bool, evaluator Evaluator) bool {
 		if ac.IsDisabled() {
 			return fallback(c)
@@ -103,11 +110,22 @@ func HasGlobalAccess(ac AccessControl, c *models.ReqContext) func(fallback func(
 		userCopy.OrgID = GlobalOrgID
 		userCopy.OrgRole = ""
 		userCopy.OrgName = ""
+		if userCopy.Permissions[GlobalOrgID] == nil {
+			permissions, err := service.GetUserPermissions(c.Req.Context(), &userCopy, Options{})
+			if err != nil {
+				c.Logger.Error("failed fetching permissions for user", "userID", userCopy.UserID, "error", err)
+			}
+			userCopy.Permissions[GlobalOrgID] = GroupScopesByAction(permissions)
+		}
+
 		hasAccess, err := ac.Evaluate(c.Req.Context(), &userCopy, evaluator)
 		if err != nil {
 			c.Logger.Error("Error from access control system", "error", err)
 			return false
 		}
+
+		// set on user so we don't fetch global permissions every time this is called
+		c.SignedInUser.Permissions[GlobalOrgID] = userCopy.Permissions[GlobalOrgID]
 
 		return hasAccess
 	}
@@ -150,6 +168,12 @@ var ReqOrgAdminOrEditor = func(c *models.ReqContext) bool {
 	return c.OrgRole == org.RoleAdmin || c.OrgRole == org.RoleEditor
 }
 
+// ReqHasRole generates a fallback to check whether the user has a role
+// Note that while ReqOrgAdmin returns false for a Grafana Admin / Viewer, ReqHasRole(org.RoleAdmin) will return true
+func ReqHasRole(role org.RoleType) func(c *models.ReqContext) bool {
+	return func(c *models.ReqContext) bool { return c.HasRole(role) }
+}
+
 func BuildPermissionsMap(permissions []Permission) map[string]bool {
 	permissionsMap := make(map[string]bool)
 	for _, p := range permissions {
@@ -162,10 +186,74 @@ func BuildPermissionsMap(permissions []Permission) map[string]bool {
 // GroupScopesByAction will group scopes on action
 func GroupScopesByAction(permissions []Permission) map[string][]string {
 	m := make(map[string][]string)
-	for _, p := range permissions {
-		m[p.Action] = append(m[p.Action], p.Scope)
+	for i := range permissions {
+		m[permissions[i].Action] = append(m[permissions[i].Action], permissions[i].Scope)
 	}
 	return m
+}
+
+func Reduce(ps []Permission) map[string][]string {
+	reduced := make(map[string][]string)
+	scopesByAction := make(map[string]map[string]bool)
+	wildcardsByAction := make(map[string]map[string]bool)
+
+	// helpers
+	add := func(scopesByAction map[string]map[string]bool, action, scope string) {
+		if _, ok := scopesByAction[action]; !ok {
+			scopesByAction[action] = map[string]bool{scope: true}
+			return
+		}
+		scopesByAction[action][scope] = true
+	}
+	includes := func(wildcardsSet map[string]bool, scope string) bool {
+		for wildcard := range wildcardsSet {
+			if wildcard == "*" || strings.HasPrefix(scope, wildcard[:len(wildcard)-1]) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Sort permissions (scopeless, wildcard, specific)
+	for i := range ps {
+		if ps[i].Scope == "" {
+			if _, ok := reduced[ps[i].Action]; !ok {
+				reduced[ps[i].Action] = nil
+			}
+			continue
+		}
+		if isWildcard(ps[i].Scope) {
+			add(wildcardsByAction, ps[i].Action, ps[i].Scope)
+			continue
+		}
+		add(scopesByAction, ps[i].Action, ps[i].Scope)
+	}
+
+	// Reduce wildcards
+	for action, wildcards := range wildcardsByAction {
+		for wildcard := range wildcards {
+			if wildcard == "*" {
+				reduced[action] = []string{wildcard}
+				break
+			}
+			if includes(wildcards, wildcard[:len(wildcard)-2]) {
+				continue
+			}
+			reduced[action] = append(reduced[action], wildcard)
+		}
+	}
+
+	// Reduce specific
+	for action, scopes := range scopesByAction {
+		for scope := range scopes {
+			if includes(wildcardsByAction[action], scope) {
+				continue
+			}
+			reduced[action] = append(reduced[action], scope)
+		}
+	}
+
+	return reduced
 }
 
 func ValidateScope(scope string) bool {
@@ -205,4 +293,15 @@ func GetOrgRoles(user *user.SignedInUser) []string {
 	}
 
 	return roles
+}
+
+func BackgroundUser(name string, orgID int64, role org.RoleType, permissions []Permission) *user.SignedInUser {
+	return &user.SignedInUser{
+		OrgID:   orgID,
+		OrgRole: role,
+		Login:   "grafana_" + name,
+		Permissions: map[int64]map[string][]string{
+			orgID: GroupScopesByAction(permissions),
+		},
+	}
 }

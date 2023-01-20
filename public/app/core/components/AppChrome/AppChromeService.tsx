@@ -1,9 +1,13 @@
 import { useObservable } from 'react-use';
 import { BehaviorSubject } from 'rxjs';
 
-import { NavModelItem } from '@grafana/data';
+import { AppEvents, NavModelItem, UrlQueryValue } from '@grafana/data';
+import { locationService } from '@grafana/runtime';
+import appEvents from 'app/core/app_events';
+import { t } from 'app/core/internationalization';
 import store from 'app/core/store';
 import { isShallowEqual } from 'app/core/utils/isShallowEqual';
+import { KioskMode } from 'app/types';
 
 import { RouteDescriptor } from '../../navigation/types';
 
@@ -14,9 +18,8 @@ export interface AppChromeState {
   actions?: React.ReactNode;
   searchBarHidden?: boolean;
   megaMenuOpen?: boolean;
+  kioskMode: KioskMode | null;
 }
-
-const defaultSection: NavModelItem = { text: 'Grafana' };
 
 export class AppChromeService {
   searchBarStorageKey = 'SearchBar_Hidden';
@@ -25,11 +28,12 @@ export class AppChromeService {
 
   readonly state = new BehaviorSubject<AppChromeState>({
     chromeless: true, // start out hidden to not flash it on pages without chrome
-    sectionNav: defaultSection,
+    sectionNav: { text: t('nav.home.title', 'Home') },
     searchBarHidden: store.getBool(this.searchBarStorageKey, false),
+    kioskMode: null,
   });
 
-  registerRouteRender(route: RouteDescriptor) {
+  setMatchedRoute(route: RouteDescriptor) {
     if (this.currentRoute !== route) {
       this.currentRoute = route;
       this.routeChangeHandled = false;
@@ -46,19 +50,27 @@ export class AppChromeService {
     if (!this.routeChangeHandled) {
       newState.actions = undefined;
       newState.pageNav = undefined;
-      newState.sectionNav = defaultSection;
+      newState.sectionNav = { text: t('nav.home.title', 'Home') };
       newState.chromeless = this.currentRoute?.chromeless;
       this.routeChangeHandled = true;
     }
 
     Object.assign(newState, update);
 
+    // KioskMode overrides chromeless state
+    newState.chromeless = newState.kioskMode === KioskMode.Full || this.currentRoute?.chromeless;
+
     if (!isShallowEqual(current, newState)) {
       this.state.next(newState);
     }
   }
 
-  toggleMegaMenu = () => {
+  useState() {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    return useObservable(this.state, this.state.getValue());
+  }
+
+  onToggleMegaMenu = () => {
     this.update({ megaMenuOpen: !this.state.getValue().megaMenuOpen });
   };
 
@@ -66,14 +78,57 @@ export class AppChromeService {
     this.update({ megaMenuOpen });
   };
 
-  toggleSearchBar = () => {
+  onToggleSearchBar = () => {
     const searchBarHidden = !this.state.getValue().searchBarHidden;
     store.set(this.searchBarStorageKey, searchBarHidden);
     this.update({ searchBarHidden });
   };
 
-  useState() {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    return useObservable(this.state, this.state.getValue());
+  onToggleKioskMode = () => {
+    const nextMode = this.getNextKioskMode();
+    this.update({ kioskMode: nextMode });
+    locationService.partial({ kiosk: this.getKioskUrlValue(nextMode) });
+  };
+
+  exitKioskMode() {
+    this.update({ kioskMode: undefined });
+    locationService.partial({ kiosk: null });
+  }
+
+  setKioskModeFromUrl(kiosk: UrlQueryValue) {
+    switch (kiosk) {
+      case 'tv':
+        this.update({ kioskMode: KioskMode.TV });
+        break;
+      case '1':
+      case true:
+        this.update({ kioskMode: KioskMode.Full });
+    }
+  }
+
+  getKioskUrlValue(mode: KioskMode | null) {
+    switch (mode) {
+      case KioskMode.TV:
+        return 'tv';
+      case KioskMode.Full:
+        return true;
+      default:
+        return null;
+    }
+  }
+
+  private getNextKioskMode() {
+    const { kioskMode, searchBarHidden } = this.state.getValue();
+
+    if (searchBarHidden || kioskMode === KioskMode.TV) {
+      appEvents.emit(AppEvents.alertSuccess, [t('navigation.kiosk.tv-alert', 'Press ESC to exit kiosk mode')]);
+      return KioskMode.Full;
+    }
+
+    if (!kioskMode) {
+      return KioskMode.TV;
+    }
+
+    return null;
   }
 }

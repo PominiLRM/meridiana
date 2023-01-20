@@ -246,7 +246,7 @@ const createLogAnalyticsTemplateVariableQuery = async (
     queryType: AzureQueryType.LogAnalytics,
     azureLogAnalytics: {
       query: rawQuery,
-      resource,
+      resources: [resource],
     },
     subscription: defaultSubscriptionId,
   };
@@ -285,6 +285,9 @@ const migrateGrafanaTemplateVariableFn = (query: AzureMonitorQuery) => {
       migratedQuery.queryType = AzureQueryType.ResourceNamesQuery;
       break;
     case 'MetricNamespaceQuery':
+      migratedQuery.queryType = AzureQueryType.NamespacesQuery;
+      break;
+    case 'MetricDefinitionsQuery':
       migratedQuery.queryType = AzureQueryType.NamespacesQuery;
       break;
     case 'MetricNamesQuery':

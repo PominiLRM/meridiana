@@ -41,6 +41,18 @@ func NewAlertRuleService(ruleStore RuleStore,
 	}
 }
 
+func (service *AlertRuleService) GetAlertRules(ctx context.Context, orgID int64) ([]*models.AlertRule, error) {
+	q := models.ListAlertRulesQuery{
+		OrgID: orgID,
+	}
+	err := service.ruleStore.ListAlertRules(ctx, &q)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: GET provenance
+	return q.Result, nil
+}
+
 func (service *AlertRuleService) GetAlertRule(ctx context.Context, orgID int64, ruleUID string) (models.AlertRule, models.Provenance, error) {
 	query := &models.GetAlertRuleByUIDQuery{
 		OrgID: orgID,
@@ -72,7 +84,7 @@ func (service *AlertRuleService) CreateAlertRule(ctx context.Context, rule model
 		return models.AlertRule{}, err
 	}
 	rule.IntervalSeconds = interval
-	err = rule.SetDashboardAndPanel()
+	err = rule.SetDashboardAndPanelFromAnnotations()
 	if err != nil {
 		return models.AlertRule{}, err
 	}
@@ -143,14 +155,14 @@ func (service *AlertRuleService) UpdateRuleGroup(ctx context.Context, orgID int6
 		if err != nil {
 			return fmt.Errorf("failed to list alert rules: %w", err)
 		}
-		updateRules := make([]store.UpdateRule, 0, len(query.Result))
+		updateRules := make([]models.UpdateRule, 0, len(query.Result))
 		for _, rule := range query.Result {
 			if rule.IntervalSeconds == intervalSeconds {
 				continue
 			}
 			newRule := *rule
 			newRule.IntervalSeconds = intervalSeconds
-			updateRules = append(updateRules, store.UpdateRule{
+			updateRules = append(updateRules, models.UpdateRule{
 				Existing: rule,
 				New:      newRule,
 			})
@@ -191,6 +203,9 @@ func (service *AlertRuleService) ReplaceRuleGroup(ctx context.Context, orgID int
 	rules := make([]*models.AlertRule, len(group.Rules))
 	group = *syncGroupRuleFields(&group, orgID)
 	for i := range group.Rules {
+		if err := group.Rules[i].SetDashboardAndPanelFromAnnotations(); err != nil {
+			return err
+		}
 		rules = append(rules, &group.Rules[i])
 	}
 	delta, err := store.CalculateChanges(ctx, service.ruleStore, key, rules)
@@ -216,7 +231,7 @@ func (service *AlertRuleService) ReplaceRuleGroup(ctx context.Context, orgID int
 			}
 		}
 
-		updates := make([]store.UpdateRule, 0, len(delta.Update))
+		updates := make([]models.UpdateRule, 0, len(delta.Update))
 		for _, update := range delta.Update {
 			// check that provenance is not changed in a invalid way
 			storedProvenance, err := service.provenanceStore.GetProvenance(ctx, update.New, orgID)
@@ -226,7 +241,7 @@ func (service *AlertRuleService) ReplaceRuleGroup(ctx context.Context, orgID int
 			if storedProvenance != provenance && storedProvenance != models.ProvenanceNone {
 				return fmt.Errorf("cannot update with provided provenance '%s', needs '%s'", provenance, storedProvenance)
 			}
-			updates = append(updates, store.UpdateRule{
+			updates = append(updates, models.UpdateRule{
 				Existing: update.Existing,
 				New:      *update.New,
 			})
@@ -276,12 +291,12 @@ func (service *AlertRuleService) UpdateAlertRule(ctx context.Context, rule model
 	rule.Updated = time.Now()
 	rule.ID = storedRule.ID
 	rule.IntervalSeconds = storedRule.IntervalSeconds
-	err = rule.SetDashboardAndPanel()
+	err = rule.SetDashboardAndPanelFromAnnotations()
 	if err != nil {
 		return models.AlertRule{}, err
 	}
 	err = service.xact.InTransaction(ctx, func(ctx context.Context) error {
-		err := service.ruleStore.UpdateAlertRules(ctx, []store.UpdateRule{
+		err := service.ruleStore.UpdateAlertRules(ctx, []models.UpdateRule{
 			{
 				Existing: &storedRule,
 				New:      rule,
@@ -318,7 +333,7 @@ func (service *AlertRuleService) DeleteAlertRule(ctx context.Context, orgID int6
 
 // checkLimitsTransactionCtx checks whether the current transaction (as identified by the ctx) breaches configured alert rule limits.
 func (service *AlertRuleService) checkLimitsTransactionCtx(ctx context.Context, orgID, userID int64) error {
-	limitReached, err := service.quotas.CheckQuotaReached(ctx, "alert_rule", &quota.ScopeParameters{
+	limitReached, err := service.quotas.CheckQuotaReached(ctx, models.QuotaTargetSrv, &quota.ScopeParameters{
 		OrgID:  orgID,
 		UserID: userID,
 	})

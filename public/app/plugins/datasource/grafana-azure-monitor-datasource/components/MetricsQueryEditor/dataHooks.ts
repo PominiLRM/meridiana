@@ -4,11 +4,11 @@ import { rangeUtil } from '@grafana/data';
 
 import Datasource from '../../datasource';
 import TimegrainConverter from '../../time_grain_converter';
-import { AzureMonitorErrorish, AzureMonitorOption, AzureMonitorQuery } from '../../types';
+import { AzureMonitorErrorish, AzureMonitorOption, AzureMonitorQuery, AzureMonitorResource } from '../../types';
 import { toOption } from '../../utils/common';
 import { useAsyncState } from '../../utils/useAsyncState';
 
-import { setMetricNamespace } from './setQueryValue';
+import { setCustomNamespace } from './setQueryValue';
 
 type SetErrorFn = (source: string, error: AzureMonitorErrorish | undefined) => void;
 
@@ -38,9 +38,20 @@ export interface MetricMetadata {
 
 type OnChangeFn = (newQuery: AzureMonitorQuery) => void;
 
+const getResourceGroupAndName = (resources?: AzureMonitorResource[]) => {
+  if (!resources || !resources.length) {
+    return { resourceGroup: '', resourceName: '' };
+  }
+  return {
+    resourceGroup: resources[0].resourceGroup ?? '',
+    resourceName: resources[0].resourceName ?? '',
+  };
+};
+
 export const useMetricNamespaces: DataHook = (query, datasource, onChange, setError) => {
   const { subscription } = query;
-  const { metricNamespace, resourceGroup, resourceName } = query.azureMonitor ?? {};
+  const { metricNamespace, resources } = query.azureMonitor ?? {};
+  const { resourceGroup, resourceName } = getResourceGroupAndName(resources);
 
   const metricNamespaces = useAsyncState(
     async () => {
@@ -48,17 +59,20 @@ export const useMetricNamespaces: DataHook = (query, datasource, onChange, setEr
         return;
       }
 
-      const results = await datasource.azureMonitorDatasource.getMetricNamespaces({
-        subscription,
-        metricNamespace,
-        resourceGroup,
-        resourceName,
-      });
+      const results = await datasource.azureMonitorDatasource.getMetricNamespaces(
+        {
+          subscription,
+          metricNamespace,
+          resourceGroup,
+          resourceName,
+        },
+        false
+      );
       const options = formatOptions(results, metricNamespace);
 
       // Do some cleanup of the query state if need be
       if (!metricNamespace && options.length) {
-        onChange(setMetricNamespace(query, options[0].value));
+        onChange(setCustomNamespace(query, options[0].value));
       }
 
       return options;
@@ -72,26 +86,27 @@ export const useMetricNamespaces: DataHook = (query, datasource, onChange, setEr
 
 export const useMetricNames: DataHook = (query, datasource, onChange, setError) => {
   const { subscription } = query;
-  const { metricNamespace, metricName, resourceGroup, resourceName } = query.azureMonitor ?? {};
+  const { metricNamespace, metricName, resources, customNamespace } = query.azureMonitor ?? {};
+  const { resourceGroup, resourceName } = getResourceGroupAndName(resources);
 
   return useAsyncState(
     async () => {
       if (!subscription || !metricNamespace || !resourceGroup || !resourceName) {
         return;
       }
-
       const results = await datasource.azureMonitorDatasource.getMetricNames({
         subscription,
         resourceGroup,
         resourceName,
         metricNamespace,
+        customNamespace,
       });
       const options = formatOptions(results, metricName);
 
       return options;
     },
     setError,
-    [subscription, resourceGroup, resourceName, metricNamespace]
+    [subscription, resourceGroup, resourceName, metricNamespace, customNamespace]
   );
 };
 
@@ -107,7 +122,8 @@ const defaultMetricMetadata: MetricMetadata = {
 export const useMetricMetadata = (query: AzureMonitorQuery, datasource: Datasource, onChange: OnChangeFn) => {
   const [metricMetadata, setMetricMetadata] = useState<MetricMetadata>(defaultMetricMetadata);
   const { subscription } = query;
-  const { resourceGroup, resourceName, metricNamespace, metricName, aggregation, timeGrain } = query.azureMonitor ?? {};
+  const { resources, metricNamespace, metricName, aggregation, timeGrain, customNamespace } = query.azureMonitor ?? {};
+  const { resourceGroup, resourceName } = getResourceGroupAndName(resources);
 
   // Fetch new metric metadata when the fields change
   useEffect(() => {
@@ -117,7 +133,7 @@ export const useMetricMetadata = (query: AzureMonitorQuery, datasource: Datasour
     }
 
     datasource.azureMonitorDatasource
-      .getMetricMetadata({ subscription, resourceGroup, resourceName, metricNamespace, metricName })
+      .getMetricMetadata({ subscription, resourceGroup, resourceName, metricNamespace, metricName, customNamespace })
       .then((metadata) => {
         // TODO: Move the aggregationTypes and timeGrain defaults into `getMetricMetadata`
         const aggregations = (metadata.supportedAggTypes || [metadata.primaryAggType]).map((v) => ({
@@ -134,7 +150,7 @@ export const useMetricMetadata = (query: AzureMonitorQuery, datasource: Datasour
           primaryAggType: metadata.primaryAggType,
         });
       });
-  }, [datasource, subscription, resourceGroup, resourceName, metricNamespace, metricName]);
+  }, [datasource, subscription, resourceGroup, resourceName, metricNamespace, metricName, customNamespace]);
 
   // Update the query state in response to the meta data changing
   useEffect(() => {

@@ -19,8 +19,8 @@ import (
 var (
 	fatalFlagOnce             sync.Once
 	startupOnce               sync.Once
-	errPluginDisabledByConfig = errors.New("remote secret managements plugin disabled because the property `secrets.use_plugin` is not set to `true`")
-	errPluginNotInstalled     = errors.New("remote secret managements plugin disabled because there is no installed plugin of type `secretsmanager`")
+	errPluginDisabledByConfig = errors.New("remote secret management plugin disabled because the property `secrets.use_plugin` is not set to `true`")
+	errPluginNotInstalled     = errors.New("remote secret management plugin disabled because there is no installed plugin of type `secretsmanager`")
 )
 
 // SecretsKVStorePlugin provides a key/value store backed by the Grafana plugin gRPC interface
@@ -190,7 +190,7 @@ func (kv *SecretsKVStorePlugin) WithFallbackEnabled(fn func() error) error {
 }
 
 func parseKeys(keys []*smp.Key) []Key {
-	var newKeys []Key
+	newKeys := make([]Key, 0, len(keys))
 
 	for _, k := range keys {
 		newKey := Key{OrgId: k.OrgId, Namespace: k.Namespace, Type: k.Type}
@@ -201,7 +201,7 @@ func parseKeys(keys []*smp.Key) []Key {
 }
 
 func parseItems(items []*smp.Item) []Item {
-	var newItems []Item
+	newItems := make([]Item, 0, len(items))
 
 	for _, i := range items {
 		newItem := Item{OrgId: &i.Key.OrgId, Namespace: &i.Key.Namespace, Type: &i.Key.Type, Value: i.Value}
@@ -265,6 +265,10 @@ func EvaluateRemoteSecretsPlugin(ctx context.Context, mg plugins.SecretsPluginMa
 		return errPluginNotInstalled
 	}
 	return nil
+}
+
+func HasPluginStarted(ctx context.Context, mg plugins.SecretsPluginManager) bool {
+	return mg.SecretsManager(ctx) != nil && mg.SecretsManager(ctx).SecretsManager != nil
 }
 
 func StartAndReturnPlugin(mg plugins.SecretsPluginManager, ctx context.Context) (smp.SecretsManagerPlugin, error) {

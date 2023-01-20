@@ -285,6 +285,8 @@ export class ElementState implements LayerElement {
 
     this.applyLayoutStylesToDiv();
     this.revId++;
+
+    this.getScene()?.save();
   }
 
   updateData(ctx: DimensionContext) {
@@ -445,10 +447,23 @@ export class ElementState implements LayerElement {
   };
 
   render() {
-    const { item } = this;
+    const { item, div } = this;
+    const scene = this.getScene();
+    // TODO: Rethink selected state handling
+    const isSelected = div && scene && scene.selecto && scene.selecto.getSelectedTargets().includes(div);
+
     return (
-      <div key={this.UID} ref={this.initElement}>
-        <item.display key={`${this.UID}/${this.revId}`} config={this.options.config} data={this.data} />
+      <div
+        key={this.UID}
+        ref={this.initElement}
+        onMouseEnter={!isSelected ? scene?.connections.handleMouseEnter : undefined}
+      >
+        <item.display
+          key={`${this.UID}/${this.revId}`}
+          config={this.options.config}
+          data={this.data}
+          isSelected={isSelected}
+        />
       </div>
     );
   }

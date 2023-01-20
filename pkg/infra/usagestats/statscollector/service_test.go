@@ -14,26 +14,28 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/grafana/pkg/infra/db"
+	"github.com/grafana/grafana/pkg/infra/db/dbtest"
 	"github.com/grafana/grafana/pkg/infra/httpclient"
 	"github.com/grafana/grafana/pkg/infra/usagestats"
 	"github.com/grafana/grafana/pkg/login/social"
-	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/registry"
 	"github.com/grafana/grafana/pkg/services/datasources"
 	"github.com/grafana/grafana/pkg/services/featuremgmt"
-	"github.com/grafana/grafana/pkg/services/sqlstore"
-	"github.com/grafana/grafana/pkg/services/sqlstore/mockstore"
+	"github.com/grafana/grafana/pkg/services/stats"
+	"github.com/grafana/grafana/pkg/services/stats/statstest"
 	"github.com/grafana/grafana/pkg/setting"
 )
 
 func TestTotalStatsUpdate(t *testing.T) {
-	sqlStore := mockstore.NewSQLStoreMock()
-	s := createService(t, setting.NewCfg(), sqlStore)
+	sqlStore := dbtest.NewFakeDB()
+	statsService := statstest.NewFakeService()
+	s := createService(t, setting.NewCfg(), sqlStore, statsService)
 	s.cfg.MetricsEndpointEnabled = true
 	s.cfg.MetricsEndpointDisableTotalStats = false
 
-	sqlStore.ExpectedSystemStats = &models.SystemStats{}
+	statsService.ExpectedSystemStats = &stats.SystemStats{}
 
 	tests := []struct {
 		MetricsEndpointEnabled           bool
@@ -93,9 +95,10 @@ func TestUsageStatsProviders(t *testing.T) {
 	provider1 := &dummyUsageStatProvider{stats: map[string]interface{}{"my_stat_1": "val1", "my_stat_2": "val2"}}
 	provider2 := &dummyUsageStatProvider{stats: map[string]interface{}{"my_stat_x": "valx", "my_stat_z": "valz"}}
 
-	store := mockstore.NewSQLStoreMock()
-	mockSystemStats(store)
-	s := createService(t, setting.NewCfg(), store)
+	store := dbtest.NewFakeDB()
+	statsService := statstest.NewFakeService()
+	mockSystemStats(statsService)
+	s := createService(t, setting.NewCfg(), store, statsService)
 	s.RegisterProviders([]registry.ProvidesUsageStats{provider1, provider2})
 
 	m, err := s.collectAdditionalMetrics(context.Background())
@@ -108,9 +111,10 @@ func TestUsageStatsProviders(t *testing.T) {
 }
 
 func TestFeatureUsageStats(t *testing.T) {
-	store := mockstore.NewSQLStoreMock()
-	mockSystemStats(store)
-	s := createService(t, setting.NewCfg(), store)
+	store := dbtest.NewFakeDB()
+	statsService := statstest.NewFakeService()
+	mockSystemStats(statsService)
+	s := createService(t, setting.NewCfg(), store, statsService)
 
 	m, err := s.collectSystemStats(context.Background())
 	require.NoError(t, err, "Expected no error")
@@ -120,7 +124,8 @@ func TestFeatureUsageStats(t *testing.T) {
 }
 
 func TestCollectingUsageStats(t *testing.T) {
-	sqlStore := mockstore.NewSQLStoreMock()
+	sqlStore := dbtest.NewFakeDB()
+	statsService := statstest.NewFakeService()
 	expectedDataSources := []*datasources.DataSource{
 		{
 			JsonData: simplejson.NewFromAny(map[string]interface{}{
@@ -148,12 +153,12 @@ func TestCollectingUsageStats(t *testing.T) {
 		AuthProxyEnabled:     true,
 		Packaging:            "deb",
 		ReportingDistributor: "hosted-grafana",
-	}, sqlStore,
+	}, sqlStore, statsService,
 		withDatasources(mockDatasourceService{datasources: expectedDataSources}))
 
 	s.startTime = time.Now().Add(-1 * time.Minute)
 
-	mockSystemStats(sqlStore)
+	mockSystemStats(statsService)
 
 	createConcurrentTokens(t, sqlStore)
 
@@ -202,7 +207,8 @@ func TestCollectingUsageStats(t *testing.T) {
 }
 
 func TestElasticStats(t *testing.T) {
-	sqlStore := mockstore.NewSQLStoreMock()
+	sqlStore := dbtest.NewFakeDB()
+	statsService := statstest.NewFakeService()
 
 	expectedDataSources := []*datasources.DataSource{
 		{
@@ -231,7 +237,7 @@ func TestElasticStats(t *testing.T) {
 		AuthProxyEnabled:     true,
 		Packaging:            "deb",
 		ReportingDistributor: "hosted-grafana",
-	}, sqlStore,
+	}, sqlStore, statsService,
 		withDatasources(mockDatasourceService{datasources: expectedDataSources}))
 
 	metrics, err := s.collectElasticStats(context.Background())
@@ -241,12 +247,13 @@ func TestElasticStats(t *testing.T) {
 	assert.EqualValues(t, 1, metrics["stats.ds."+datasources.DS_ES+".v70_1_1.count"])
 }
 func TestDatasourceStats(t *testing.T) {
-	sqlStore := mockstore.NewSQLStoreMock()
-	s := createService(t, &setting.Cfg{}, sqlStore)
+	sqlStore := dbtest.NewFakeDB()
+	statsService := statstest.NewFakeService()
+	s := createService(t, &setting.Cfg{}, sqlStore, statsService)
 
 	setupSomeDataSourcePlugins(t, s)
 
-	sqlStore.ExpectedDataSourceStats = []*models.DataSourceStats{
+	statsService.ExpectedDataSourceStats = []*stats.DataSourceStats{
 		{
 			Type:  datasources.DS_ES,
 			Count: 9,
@@ -283,7 +290,7 @@ func TestDatasourceStats(t *testing.T) {
 		},
 	}
 
-	sqlStore.ExpectedDataSourcesAccessStats = []*models.DataSourceAccessStats{
+	statsService.ExpectedDataSourcesAccessStats = []*stats.DataSourceAccessStats{
 		{
 			Type:   datasources.DS_ES,
 			Access: "direct",
@@ -348,10 +355,11 @@ func TestDatasourceStats(t *testing.T) {
 }
 
 func TestAlertNotifiersStats(t *testing.T) {
-	sqlStore := mockstore.NewSQLStoreMock()
-	s := createService(t, &setting.Cfg{}, sqlStore)
+	sqlStore := dbtest.NewFakeDB()
+	statsService := statstest.NewFakeService()
+	s := createService(t, &setting.Cfg{}, sqlStore, statsService)
 
-	sqlStore.ExpectedNotifierUsageStats = []*models.NotifierUsageStats{
+	statsService.ExpectedNotifierUsageStats = []*stats.NotifierUsageStats{
 		{
 			Type:  "slack",
 			Count: 1,
@@ -369,8 +377,8 @@ func TestAlertNotifiersStats(t *testing.T) {
 	assert.EqualValues(t, 2, metrics["stats.alert_notifiers.webhook.count"])
 }
 
-func mockSystemStats(sqlStore *mockstore.SQLStoreMock) {
-	sqlStore.ExpectedSystemStats = &models.SystemStats{
+func mockSystemStats(statsService *statstest.FakeService) {
+	statsService.ExpectedSystemStats = &stats.SystemStats{
 		Dashboards:                1,
 		Datasources:               2,
 		Users:                     3,
@@ -424,53 +432,20 @@ func (m *mockSocial) GetOAuthProviders() map[string]bool {
 	return m.OAuthProviders
 }
 
-type fakePluginStore struct {
-	plugins.Store
-
-	plugins map[string]plugins.PluginDTO
-}
-
-func (pr fakePluginStore) Plugin(_ context.Context, pluginID string) (plugins.PluginDTO, bool) {
-	p, exists := pr.plugins[pluginID]
-
-	return p, exists
-}
-
 func setupSomeDataSourcePlugins(t *testing.T, s *Service) {
 	t.Helper()
 
-	s.plugins = &fakePluginStore{
-		plugins: map[string]plugins.PluginDTO{
-			datasources.DS_ES: {
-				Signature: "internal",
-			},
-			datasources.DS_PROMETHEUS: {
-				Signature: "internal",
-			},
-			datasources.DS_GRAPHITE: {
-				Signature: "internal",
-			},
-			datasources.DS_MYSQL: {
-				Signature: "internal",
-			},
+	s.plugins = &plugins.FakePluginStore{
+		PluginList: []plugins.PluginDTO{
+			{JSONData: plugins.JSONData{ID: datasources.DS_ES}, Signature: "internal"},
+			{JSONData: plugins.JSONData{ID: datasources.DS_PROMETHEUS}, Signature: "internal"},
+			{JSONData: plugins.JSONData{ID: datasources.DS_GRAPHITE}, Signature: "internal"},
+			{JSONData: plugins.JSONData{ID: datasources.DS_MYSQL}, Signature: "internal"},
 		},
 	}
 }
 
-func (pr fakePluginStore) Plugins(_ context.Context, pluginTypes ...plugins.Type) []plugins.PluginDTO {
-	var result []plugins.PluginDTO
-	for _, v := range pr.plugins {
-		for _, t := range pluginTypes {
-			if v.Type == t {
-				result = append(result, v)
-			}
-		}
-	}
-
-	return result
-}
-
-func createService(t testing.TB, cfg *setting.Cfg, store sqlstore.Store, opts ...func(*serviceOptions)) *Service {
+func createService(t testing.TB, cfg *setting.Cfg, store db.DB, statsService stats.Service, opts ...func(*serviceOptions)) *Service {
 	t.Helper()
 
 	o := &serviceOptions{datasources: mockDatasourceService{}}
@@ -481,10 +456,11 @@ func createService(t testing.TB, cfg *setting.Cfg, store sqlstore.Store, opts ..
 
 	return ProvideService(
 		&usagestats.UsageStatsMock{},
+		statsService,
 		cfg,
 		store,
 		&mockSocial{},
-		&fakePluginStore{},
+		&plugins.FakePluginStore{},
 		featuremgmt.WithFeatures("feature1", "feature2"),
 		o.datasources,
 		httpclient.NewProvider(),

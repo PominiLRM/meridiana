@@ -14,12 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/grafana/pkg/components/simplejson"
+	"github.com/grafana/grafana/pkg/infra/db/dbtest"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/dashboards"
 	"github.com/grafana/grafana/pkg/services/dashboardsnapshots"
 	"github.com/grafana/grafana/pkg/services/guardian"
 	"github.com/grafana/grafana/pkg/services/org"
-	"github.com/grafana/grafana/pkg/services/sqlstore/mockstore"
+	"github.com/grafana/grafana/pkg/services/team/teamtest"
 )
 
 func TestDashboardSnapshotAPIEndpoint_singleSnapshot(t *testing.T) {
@@ -31,8 +32,7 @@ func TestDashboardSnapshotAPIEndpoint_singleSnapshot(t *testing.T) {
 		return s
 	}
 
-	sqlmock := mockstore.NewSQLStoreMock()
-	sqlmock.ExpectedTeamsByUser = []*models.TeamDTO{}
+	sqlmock := dbtest.NewFakeDB()
 	jsonModel, err := simplejson.NewJson([]byte(`{"id":100}`))
 	require.NoError(t, err)
 
@@ -70,10 +70,19 @@ func TestDashboardSnapshotAPIEndpoint_singleSnapshot(t *testing.T) {
 				hs := &HTTPServer{dashboardsnapshotsService: setUpSnapshotTest(t, 0, "")}
 				sc.handlerFunc = hs.DeleteDashboardSnapshot
 
+				teamSvc := &teamtest.FakeService{}
 				dashSvc := dashboards.NewFakeDashboardService(t)
+				dashSvc.On("GetDashboard", mock.Anything, mock.AnythingOfType("*dashboards.GetDashboardQuery")).Run(func(args mock.Arguments) {
+					q := args.Get(1).(*dashboards.GetDashboardQuery)
+					q.Result = &dashboards.Dashboard{
+						ID:  q.ID,
+						UID: q.UID,
+					}
+				}).Return(nil).Maybe()
 				dashSvc.On("GetDashboardACLInfoList", mock.Anything, mock.AnythingOfType("*models.GetDashboardACLInfoListQuery")).Return(nil).Maybe()
+				hs.DashboardService = dashSvc
 
-				guardian.InitLegacyGuardian(sc.sqlStore, dashSvc)
+				guardian.InitLegacyGuardian(sc.sqlStore, dashSvc, teamSvc)
 				sc.fakeReqWithParams("DELETE", sc.url, map[string]string{"key": "12345"}).exec()
 
 				assert.Equal(t, 403, sc.resp.Code)
@@ -107,6 +116,7 @@ func TestDashboardSnapshotAPIEndpoint_singleSnapshot(t *testing.T) {
 	})
 
 	t.Run("When user is editor and dashboard has default ACL", func(t *testing.T) {
+		teamSvc := &teamtest.FakeService{}
 		dashSvc := &dashboards.FakeDashboardService{}
 		dashSvc.On("GetDashboardACLInfoList", mock.Anything, mock.AnythingOfType("*models.GetDashboardACLInfoListQuery")).Run(func(args mock.Arguments) {
 			q := args.Get(1).(*models.GetDashboardACLInfoListQuery)
@@ -118,13 +128,28 @@ func TestDashboardSnapshotAPIEndpoint_singleSnapshot(t *testing.T) {
 
 		loggedInUserScenarioWithRole(t, "Should be able to delete a snapshot when calling DELETE on", "DELETE",
 			"/api/snapshots/12345", "/api/snapshots/:key", org.RoleEditor, func(sc *scenarioContext) {
-				guardian.InitLegacyGuardian(sc.sqlStore, dashSvc)
 				var externalRequest *http.Request
 				ts := setupRemoteServer(func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(200)
 					externalRequest = req
 				})
-				hs := &HTTPServer{dashboardsnapshotsService: setUpSnapshotTest(t, 0, ts.URL)}
+				dashSvc := dashboards.NewFakeDashboardService(t)
+				dashSvc.On("GetDashboard", mock.Anything, mock.AnythingOfType("*dashboards.GetDashboardQuery")).Run(func(args mock.Arguments) {
+					q := args.Get(1).(*dashboards.GetDashboardQuery)
+					q.Result = &dashboards.Dashboard{
+						ID:    q.ID,
+						OrgID: q.OrgID,
+					}
+				}).Return(nil).Maybe()
+				dashSvc.On("GetDashboardACLInfoList", mock.Anything, mock.AnythingOfType("*models.GetDashboardACLInfoListQuery")).Run(func(args mock.Arguments) {
+					q := args.Get(1).(*models.GetDashboardACLInfoListQuery)
+					q.Result = []*models.DashboardACLInfoDTO{
+						{Role: &viewerRole, Permission: models.PERMISSION_VIEW},
+						{Role: &editorRole, Permission: models.PERMISSION_EDIT},
+					}
+				}).Return(nil)
+				guardian.InitLegacyGuardian(sc.sqlStore, dashSvc, teamSvc)
+				hs := &HTTPServer{dashboardsnapshotsService: setUpSnapshotTest(t, 0, ts.URL), DashboardService: dashSvc}
 				sc.handlerFunc = hs.DeleteDashboardSnapshot
 				sc.fakeReqWithParams("DELETE", sc.url, map[string]string{"key": "12345"}).exec()
 
@@ -143,8 +168,9 @@ func TestDashboardSnapshotAPIEndpoint_singleSnapshot(t *testing.T) {
 		loggedInUserScenarioWithRole(t, "Should be able to delete a snapshot when calling DELETE on",
 			"DELETE", "/api/snapshots/12345", "/api/snapshots/:key", org.RoleEditor, func(sc *scenarioContext) {
 				d := setUpSnapshotTest(t, testUserID, "")
-				hs := &HTTPServer{dashboardsnapshotsService: d}
 
+				dashSvc := dashboards.NewFakeDashboardService(t)
+				hs := &HTTPServer{dashboardsnapshotsService: d, DashboardService: dashSvc}
 				sc.handlerFunc = hs.DeleteDashboardSnapshot
 				sc.fakeReqWithParams("DELETE", sc.url, map[string]string{"key": "12345"}).exec()
 
@@ -166,7 +192,9 @@ func TestDashboardSnapshotAPIEndpoint_singleSnapshot(t *testing.T) {
 					rw.WriteHeader(500)
 					_, writeErr = rw.Write([]byte(`{"message":"Failed to get dashboard snapshot"}`))
 				})
-				hs := &HTTPServer{dashboardsnapshotsService: setUpSnapshotTest(t, testUserID, ts.URL)}
+
+				dashSvc := dashboards.NewFakeDashboardService(t)
+				hs := &HTTPServer{dashboardsnapshotsService: setUpSnapshotTest(t, testUserID, ts.URL), DashboardService: dashSvc}
 				sc.handlerFunc = hs.DeleteDashboardSnapshot
 				sc.fakeReqWithParams("DELETE", sc.url, map[string]string{"key": "12345"}).exec()
 
@@ -227,8 +255,7 @@ func TestDashboardSnapshotAPIEndpoint_singleSnapshot(t *testing.T) {
 }
 
 func TestGetDashboardSnapshotNotFound(t *testing.T) {
-	sqlmock := mockstore.NewSQLStoreMock()
-	sqlmock.ExpectedTeamsByUser = []*models.TeamDTO{}
+	sqlmock := dbtest.NewFakeDB()
 
 	setUpSnapshotTest := func(t *testing.T) dashboardsnapshots.Service {
 		t.Helper()
@@ -277,8 +304,7 @@ func TestGetDashboardSnapshotNotFound(t *testing.T) {
 }
 
 func TestGetDashboardSnapshotFailure(t *testing.T) {
-	sqlmock := mockstore.NewSQLStoreMock()
-	sqlmock.ExpectedTeamsByUser = []*models.TeamDTO{}
+	sqlmock := dbtest.NewFakeDB()
 
 	setUpSnapshotTest := func(t *testing.T) dashboardsnapshots.Service {
 		t.Helper()

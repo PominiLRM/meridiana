@@ -11,8 +11,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/grafana/grafana/pkg/services/org/orgimpl"
+	"github.com/grafana/grafana/pkg/services/quota/quotaimpl"
 	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/services/user"
+	"github.com/grafana/grafana/pkg/services/user/userimpl"
 	"github.com/grafana/grafana/pkg/tests/testinfra"
 
 	"github.com/stretchr/testify/assert"
@@ -27,7 +30,11 @@ const (
 
 var updateSnapshotFlag = false
 
-func TestPlugins(t *testing.T) {
+func TestIntegrationPlugins(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
 	dir, cfgPath := testinfra.CreateGrafDir(t, testinfra.GrafanaOpts{
 		PluginAdminEnabled: true,
 	})
@@ -48,11 +55,11 @@ func TestPlugins(t *testing.T) {
 		t.Run("Request is forbidden if not from an admin", func(t *testing.T) {
 			status, body := makePostRequest(t, grafanaAPIURL(usernameNonAdmin, grafanaListedAddr, "plugins/grafana-plugin/install"))
 			assert.Equal(t, 403, status)
-			assert.Equal(t, "Permission denied", body["message"])
+			assert.Equal(t, "You'll need additional permissions to perform this action. Permissions needed: plugins:install", body["message"])
 
 			status, body = makePostRequest(t, grafanaAPIURL(usernameNonAdmin, grafanaListedAddr, "plugins/grafana-plugin/uninstall"))
 			assert.Equal(t, 403, status)
-			assert.Equal(t, "Permission denied", body["message"])
+			assert.Equal(t, "You'll need additional permissions to perform this action. Permissions needed: plugins:install", body["message"])
 		})
 
 		t.Run("Request is not forbidden if from an admin", func(t *testing.T) {
@@ -115,7 +122,13 @@ func createUser(t *testing.T, store *sqlstore.SQLStore, cmd user.CreateUserComma
 	store.Cfg.AutoAssignOrg = true
 	store.Cfg.AutoAssignOrgId = 1
 
-	_, err := store.CreateUser(context.Background(), cmd)
+	quotaService := quotaimpl.ProvideService(store, store.Cfg)
+	orgService, err := orgimpl.ProvideService(store, store.Cfg, quotaService)
+	require.NoError(t, err)
+	usrSvc, err := userimpl.ProvideService(store, orgService, store.Cfg, nil, nil, quotaService)
+	require.NoError(t, err)
+
+	_, err = usrSvc.CreateUserForTests(context.Background(), &cmd)
 	require.NoError(t, err)
 }
 

@@ -1,9 +1,9 @@
 import React, { FC, Fragment, useMemo, useState } from 'react';
-import { useDispatch } from 'react-redux';
 
 import { ConfirmModal, useStyles2 } from '@grafana/ui';
 import { contextSrv } from 'app/core/services/context_srv';
 import { AlertManagerCortexConfig } from 'app/plugins/datasource/alertmanager/types';
+import { useDispatch } from 'app/types';
 
 import { Authorize } from '../../components/Authorize';
 import { deleteTemplateAction } from '../../state/actions';
@@ -49,8 +49,8 @@ export const TemplatesTable: FC<Props> = ({ config, alertManagerName }) => {
 
   return (
     <ReceiversSection
-      title="Message templates"
-      description="Templates construct the messages that get sent to the contact points."
+      title="Notification templates"
+      description="Notification templates customize notifications sent from contact points."
       addButtonLabel="New template"
       addButtonTo={makeAMLink('/alerting/notifications/templates/new', alertManagerName)}
       showButton={contextSrv.hasPermission(permissions.create)}

@@ -19,6 +19,7 @@ import * as React from 'react';
 import { createRef, RefObject } from 'react';
 
 import { GrafanaTheme2, LinkModel, TimeZone } from '@grafana/data';
+import { reportInteraction } from '@grafana/runtime';
 import { stylesFactory, withTheme2, ToolbarButton } from '@grafana/ui';
 
 import { Accessors } from '../ScrollManager';
@@ -115,9 +116,10 @@ type TVirtualizedTraceViewOwnProps = {
   createFocusSpanLink: (traceId: string, spanId: string) => LinkModel;
   topOfViewRef?: RefObject<HTMLDivElement>;
   topOfViewRefType?: TopOfViewRefType;
+  datasourceType: string;
 };
 
-type VirtualizedTraceViewProps = TVirtualizedTraceViewOwnProps & TExtractUiFindFromStateReturn & TTraceTimeline;
+export type VirtualizedTraceViewProps = TVirtualizedTraceViewOwnProps & TExtractUiFindFromStateReturn & TTraceTimeline;
 
 // export for tests
 export const DEFAULT_HEIGHTS = {
@@ -395,12 +397,14 @@ export class UnthemedVirtualizedTraceView extends React.Component<VirtualizedTra
       createSpanLink,
       focusedSpanId,
       focusedSpanIdForSearch,
+      theme,
+      datasourceType,
     } = this.props;
     // to avert flow error
     if (!trace) {
       return null;
     }
-    const color = getColorByKey(serviceName);
+    const color = getColorByKey(serviceName, theme);
     const isCollapsed = childrenHiddenIDs.has(spanID);
     const isDetailExpanded = detailStates.has(spanID);
     const isMatchingFilter = findMatchesIDs ? findMatchesIDs.has(spanID) : false;
@@ -414,7 +418,7 @@ export class UnthemedVirtualizedTraceView extends React.Component<VirtualizedTra
       if (rpcSpan) {
         const rpcViewBounds = this.getViewedBounds()(rpcSpan.startTime, rpcSpan.startTime + rpcSpan.duration);
         rpc = {
-          color: getColorByKey(rpcSpan.process.serviceName),
+          color: getColorByKey(rpcSpan.process.serviceName, theme),
           operationName: rpcSpan.operationName,
           serviceName: rpcSpan.process.serviceName,
           viewEnd: rpcViewBounds.end,
@@ -430,7 +434,7 @@ export class UnthemedVirtualizedTraceView extends React.Component<VirtualizedTra
     if (!span.hasChildren && peerServiceKV && isKindClient(span)) {
       noInstrumentedServer = {
         serviceName: peerServiceKV.value,
-        color: getColorByKey(peerServiceKV.value),
+        color: getColorByKey(peerServiceKV.value, theme),
       };
     }
 
@@ -460,6 +464,7 @@ export class UnthemedVirtualizedTraceView extends React.Component<VirtualizedTra
           addHoverIndentGuideId={addHoverIndentGuideId}
           removeHoverIndentGuideId={removeHoverIndentGuideId}
           createSpanLink={createSpanLink}
+          datasourceType={datasourceType}
         />
       </div>
     );
@@ -490,12 +495,14 @@ export class UnthemedVirtualizedTraceView extends React.Component<VirtualizedTra
       focusedSpanId,
       createFocusSpanLink,
       topOfViewRefType,
+      theme,
+      datasourceType,
     } = this.props;
     const detailState = detailStates.get(spanID);
     if (!trace || !detailState) {
       return null;
     }
-    const color = getColorByKey(serviceName);
+    const color = getColorByKey(serviceName, theme);
     const styles = getStyles(this.props);
     return (
       <div className={styles.row} key={key} style={{ ...style, zIndex: 1 }} {...attrs}>
@@ -523,14 +530,20 @@ export class UnthemedVirtualizedTraceView extends React.Component<VirtualizedTra
           focusedSpanId={focusedSpanId}
           createFocusSpanLink={createFocusSpanLink}
           topOfViewRefType={topOfViewRefType}
+          datasourceType={datasourceType}
         />
       </div>
     );
   }
 
   scrollToTop = () => {
-    const { topOfViewRef } = this.props;
+    const { topOfViewRef, datasourceType, trace } = this.props;
     topOfViewRef?.current?.scrollIntoView({ behavior: 'smooth' });
+    reportInteraction('grafana_traces_trace_view_scroll_to_top_clicked', {
+      datasourceType: datasourceType,
+      numServices: trace.services.length,
+      numSpans: trace.spans.length,
+    });
   };
 
   render() {

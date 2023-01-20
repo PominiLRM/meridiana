@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/grafana/pkg/services/org"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/contexthandler"
@@ -22,6 +23,11 @@ func TestMiddlewareJWTAuth(t *testing.T) {
 	configure := func(cfg *setting.Cfg) {
 		cfg.JWTAuthEnabled = true
 		cfg.JWTAuthHeaderName = "x-jwt-assertion"
+	}
+
+	configureAuthHeader := func(cfg *setting.Cfg) {
+		cfg.JWTAuthEnabled = true
+		cfg.JWTAuthHeaderName = "Authorization"
 	}
 
 	configureUsernameClaim := func(cfg *setting.Cfg) {
@@ -49,7 +55,8 @@ func TestMiddlewareJWTAuth(t *testing.T) {
 		cfg.JWTAuthAllowAssignGrafanaAdmin = true
 	}
 
-	token := "some-token"
+	// #nosec G101 -- This is dummy/test token
+	token := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ2bGFkaW1pckBleGFtcGxlLmNvbSIsImlhdCI6MTUxNjIzOTAyMiwiZm9vLXVzZXJuYW1lIjoidmxhZGltaXIiLCJuYW1lIjoiVmxhZGltaXIgRXhhbXBsZSIsImZvby1lbWFpbCI6InZsYWRpbWlyQGV4YW1wbGUuY29tIn0.MeNU1pCzRHGdQuu5ppeftxT31_2Le2kM1wd1GK2jExs"
 
 	middlewareScenario(t, "Valid token with valid login claim", func(t *testing.T, sc *scenarioContext) {
 		myUsername := "vladimir"
@@ -70,7 +77,34 @@ func TestMiddlewareJWTAuth(t *testing.T) {
 		assert.Equal(t, orgID, sc.context.OrgID)
 		assert.Equal(t, id, sc.context.UserID)
 		assert.Equal(t, myUsername, sc.context.Login)
+		list := contexthandler.AuthHTTPHeaderListFromContext(sc.context.Req.Context())
+		require.NotNil(t, list)
+		require.EqualValues(t, []string{sc.cfg.JWTAuthHeaderName}, list.Items)
 	}, configure, configureUsernameClaim)
+
+	middlewareScenario(t, "Valid token with bearer in authorization header", func(t *testing.T, sc *scenarioContext) {
+		myUsername := "vladimir"
+		// We can ignore gosec G101 since this does not contain any credentials.
+		// nolint:gosec
+		myToken := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ2bGFkaW1pckBleGFtcGxlLmNvbSIsImlhdCI6MTUxNjIzOTAyMiwiZm9vLXVzZXJuYW1lIjoidmxhZGltaXIiLCJuYW1lIjoiVmxhZGltaXIgRXhhbXBsZSIsImZvby1lbWFpbCI6InZsYWRpbWlyQGV4YW1wbGUuY29tIn0.MeNU1pCzRHGdQuu5ppeftxT31_2Le2kM1wd1GK2jExs"
+		var verifiedToken string
+		sc.jwtAuthService.VerifyProvider = func(ctx context.Context, token string) (models.JWTClaims, error) {
+			verifiedToken = myToken
+			return models.JWTClaims{
+				"sub":          myUsername,
+				"foo-username": myUsername,
+			}, nil
+		}
+		sc.userService.ExpectedSignedInUser = &user.SignedInUser{UserID: id, OrgID: orgID, Login: myUsername}
+
+		sc.fakeReq("GET", "/").withJWTAuthHeader("Bearer " + myToken).exec()
+		assert.Equal(t, verifiedToken, myToken)
+		assert.Equal(t, 200, sc.resp.Code)
+		assert.True(t, sc.context.IsSignedIn)
+		assert.Equal(t, orgID, sc.context.OrgID)
+		assert.Equal(t, id, sc.context.UserID)
+		assert.Equal(t, myUsername, sc.context.Login)
+	}, configureAuthHeader, configureUsernameClaim)
 
 	middlewareScenario(t, "Valid token with valid email claim", func(t *testing.T, sc *scenarioContext) {
 		var verifiedToken string

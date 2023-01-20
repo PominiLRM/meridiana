@@ -1,6 +1,6 @@
 ---
 aliases:
-  - /docs/grafana/latest/troubleshooting/
+  - troubleshoot-dashboards/
 description: Guide to troubleshooting Grafana problems
 keywords:
   - grafana
@@ -23,11 +23,15 @@ You can enable more logging by changing log level in the Grafana configuration f
 
 For more information, refer to [Enable debug logging in Grafana CLI]({{< relref "../cli/#enable-debug-logging" >}}) and the [log section in Configuration]({{< relref "../setup-grafana/configure-grafana/#log" >}}).
 
+## Troubleshoot with Dashboards Panels
+
+If you have an issue with your Dashboard panel, you can send us debug information. For more information, refer to [Send a panel to Grafana Labs support]({{< relref "./send-panel-to-grafana-support/" >}}).
+
 ## Troubleshoot transformations
 
 Order of transformations matters. If the final data output from multiple transformations looks wrong, try changing the transformation order. Each transformation transforms data returned by the previous transformation, not the original raw data.
 
-For more information, refer to [Debug a transformation]({{< relref "../panels/transform-data/#debug-a-transformation" >}}).
+For more information, refer to [Debug a transformation]({{< relref "../panels-visualizations/query-transform-data/transform-data/#debug-a-transformation" >}}).
 
 ## Text missing with server-side image rendering (RPM-based Linux)
 

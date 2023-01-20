@@ -1,8 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { Provider } from 'react-redux';
 
 import { BackendSrv, setBackendSrv } from '@grafana/runtime';
+
+import { configureStore } from '../../store/configureStore';
 
 import { CreateTeam } from './CreateTeam';
 
@@ -29,16 +32,23 @@ const mockPost = jest.fn(() => {
 
 setBackendSrv({
   post: mockPost,
-} as any as BackendSrv);
+} as unknown as BackendSrv);
 
 const setup = () => {
-  return render(<CreateTeam />);
+  const store = configureStore();
+  return render(
+    <Provider store={store}>
+      <CreateTeam />
+    </Provider>
+  );
 };
 
 describe('Create team', () => {
   it('should render component', () => {
     setup();
-    expect(screen.getByText(/new team/i)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /name/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByRole('button')).toBeInTheDocument();
   });
 
   it('should send correct data to the server', async () => {

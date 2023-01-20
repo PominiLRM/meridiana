@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/grafana/grafana/pkg/infra/log"
-	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/models"
 	"github.com/grafana/grafana/pkg/services/contexthandler"
 	"github.com/grafana/grafana/pkg/services/featuremgmt"
@@ -36,6 +35,8 @@ func Logger(cfg *setting.Cfg) web.Middleware {
 
 			// we have to init the context with the counter here to update the request
 			r = r.WithContext(log.InitCounter(r.Context()))
+			// put the start time on context so we can measure it later.
+			r = r.WithContext(log.InitstartTime(r.Context(), time.Now()))
 
 			rw := web.Rw(w, r)
 			next.ServeHTTP(rw, r)
@@ -72,11 +73,6 @@ func Logger(cfg *setting.Cfg) web.Middleware {
 
 				if handler, exist := routeOperationName(ctx.Req); exist {
 					logParams = append(logParams, "handler", handler)
-				}
-
-				traceID := tracing.TraceIDFromContext(ctx.Req.Context(), false)
-				if traceID != "" {
-					logParams = append(logParams, "traceID", traceID)
 				}
 
 				if status >= 500 {

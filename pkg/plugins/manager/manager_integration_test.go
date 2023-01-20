@@ -3,24 +3,26 @@ package manager
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/trace"
-	"gopkg.in/ini.v1"
-
+	"github.com/grafana/grafana-azure-sdk-go/azsettings"
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/httpclient"
+	"github.com/stretchr/testify/require"
+	"gopkg.in/ini.v1"
 
+	"github.com/grafana/grafana/pkg/infra/db"
 	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/plugins/backendplugin/coreplugin"
 	"github.com/grafana/grafana/pkg/plugins/backendplugin/provider"
+	"github.com/grafana/grafana/pkg/plugins/config"
+	plicensing "github.com/grafana/grafana/pkg/plugins/licensing"
 	"github.com/grafana/grafana/pkg/plugins/manager/client"
+	"github.com/grafana/grafana/pkg/plugins/manager/fakes"
 	"github.com/grafana/grafana/pkg/plugins/manager/loader"
 	"github.com/grafana/grafana/pkg/plugins/manager/registry"
 	"github.com/grafana/grafana/pkg/plugins/manager/signature"
@@ -28,7 +30,6 @@ import (
 	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/services/licensing"
 	"github.com/grafana/grafana/pkg/services/searchV2"
-	"github.com/grafana/grafana/pkg/services/sqlstore"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/tsdb/azuremonitor"
 	"github.com/grafana/grafana/pkg/tsdb/cloudmonitoring"
@@ -41,43 +42,49 @@ import (
 	"github.com/grafana/grafana/pkg/tsdb/mssql"
 	"github.com/grafana/grafana/pkg/tsdb/mysql"
 	"github.com/grafana/grafana/pkg/tsdb/opentsdb"
+	"github.com/grafana/grafana/pkg/tsdb/parca"
+	"github.com/grafana/grafana/pkg/tsdb/phlare"
 	"github.com/grafana/grafana/pkg/tsdb/postgres"
 	"github.com/grafana/grafana/pkg/tsdb/prometheus"
 	"github.com/grafana/grafana/pkg/tsdb/tempo"
 	"github.com/grafana/grafana/pkg/tsdb/testdatasource"
 )
 
-func TestIntegrationPluginManager_Run(t *testing.T) {
-	t.Helper()
-
+func TestIntegrationPluginManager(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
 	staticRootPath, err := filepath.Abs("../../../public/")
 	require.NoError(t, err)
 
 	bundledPluginsPath, err := filepath.Abs("../../../plugins-bundled/internal")
 	require.NoError(t, err)
 
-	features := featuremgmt.WithFeatures()
+	// We use the raw config here as it forms the basis for the setting.Provider implementation
+	// The plugin manager also relies directly on the setting.Cfg struct to provide Grafana specific
+	// properties such as the loading paths
+	raw, err := ini.Load([]byte(`
+		app_mode = production
+
+		[plugin.test-app]
+		path=testdata/test-app
+
+		[plugin.test-panel]
+		not=included
+		`),
+	)
+	require.NoError(t, err)
+
 	cfg := &setting.Cfg{
-		Raw:                    ini.Empty(),
-		Env:                    setting.Prod,
+		Raw:                    raw,
 		StaticRootPath:         staticRootPath,
 		BundledPluginsPath:     bundledPluginsPath,
-		IsFeatureToggleEnabled: features.IsEnabled,
-		PluginSettings: map[string]map[string]string{
-			"plugin.test-app": {
-				"path": "testdata/test-app",
-			},
-			"plugin.test-panel": {
-				"not": "included",
-			},
-		},
+		Azure:                  &azsettings.AzureSettings{},
+		IsFeatureToggleEnabled: func(_ string) bool { return false },
 	}
 
-	tracer := &fakeTracer{}
-
-	license := &licensing.OSSLicensingService{
-		Cfg: cfg,
-	}
+	tracer := tracing.InitializeTracerForTest()
+	features := featuremgmt.WithFeatures()
 
 	hcp := httpclient.NewProvider()
 	am := azuremonitor.ProvideService(cfg, hcp, tracer)
@@ -94,24 +101,28 @@ func TestIntegrationPluginManager_Run(t *testing.T) {
 	pg := postgres.ProvideService(cfg)
 	my := mysql.ProvideService(cfg, hcp)
 	ms := mssql.ProvideService(cfg)
-	sv2 := searchV2.ProvideService(cfg, sqlstore.InitTestDB(t), nil, nil)
-	graf := grafanads.ProvideService(cfg, sv2, nil)
+	sv2 := searchV2.ProvideService(cfg, db.InitTestDB(t), nil, nil, tracer, features, nil, nil, nil)
+	graf := grafanads.ProvideService(sv2, nil)
+	phlare := phlare.ProvideService(hcp)
+	parca := parca.ProvideService(hcp)
 
-	coreRegistry := coreplugin.ProvideCoreRegistry(am, cw, cm, es, grap, idb, lk, otsdb, pr, tmpo, td, pg, my, ms, graf)
+	coreRegistry := coreplugin.ProvideCoreRegistry(am, cw, cm, es, grap, idb, lk, otsdb, pr, tmpo, td, pg, my, ms, graf, phlare, parca)
 
-	pmCfg := plugins.FromGrafanaCfg(cfg)
+	pCfg := config.ProvideConfig(setting.ProvideProvider(cfg), cfg)
 	reg := registry.ProvideService()
-	pm, err := ProvideService(cfg, reg, loader.New(pmCfg, license, signature.NewUnsignedAuthorizer(pmCfg),
-		provider.ProvideService(coreRegistry)), nil)
+
+	lic := plicensing.ProvideLicensing(cfg, &licensing.OSSLicensingService{Cfg: cfg})
+	l := loader.ProvideService(pCfg, lic, signature.NewUnsignedAuthorizer(pCfg),
+		reg, provider.ProvideService(coreRegistry), fakes.NewFakeRoleRegistry())
+	ps, err := store.ProvideService(cfg, pCfg, reg, l)
 	require.NoError(t, err)
-	ps := store.ProvideService(reg)
 
 	ctx := context.Background()
 	verifyCorePluginCatalogue(t, ctx, ps)
-	verifyBundledPlugins(t, ctx, ps)
-	verifyPluginStaticRoutes(t, ctx, ps)
-	verifyBackendProcesses(t, pm.pluginRegistry.Plugins(ctx))
-	verifyPluginQuery(t, ctx, client.ProvideService(reg))
+	verifyBundledPlugins(t, ctx, ps, reg)
+	verifyPluginStaticRoutes(t, ctx, ps, reg)
+	verifyBackendProcesses(t, reg.Plugins(ctx))
+	verifyPluginQuery(t, ctx, client.ProvideService(reg, pCfg))
 }
 
 func verifyPluginQuery(t *testing.T, ctx context.Context, c plugins.Client) {
@@ -136,7 +147,7 @@ func verifyPluginQuery(t *testing.T, ctx context.Context, c plugins.Client) {
 	require.NoError(t, err)
 	payload, err := resp.MarshalJSON()
 	require.NoError(t, err)
-	require.JSONEq(t, `{"results":{"A":{"frames":[{"schema":{"refId":"A","fields":[{"name":"time","type":"time","typeInfo":{"frame":"time.Time"}},{"name":"A-series","type":"number","typeInfo":{"frame":"int64","nullable":true}}]},"data":{"values":[[1661420570000,1661420630000,1661420690000,1661420750000,1661420810000,1661420870000],[1,20,90,30,5,0]]}}]}}}`, string(payload))
+	require.JSONEq(t, `{"results":{"A":{"frames":[{"schema":{"refId":"A","fields":[{"name":"time","type":"time","typeInfo":{"frame":"time.Time"}},{"name":"A-series","type":"number","typeInfo":{"frame":"int64","nullable":true}}]},"data":{"values":[[1661420570000,1661420630000,1661420690000,1661420750000,1661420810000,1661420870000],[1,20,90,30,5,0]]}}],"status":200}}}`, string(payload))
 }
 
 func verifyCorePluginCatalogue(t *testing.T, ctx context.Context, ps *store.Service) {
@@ -156,7 +167,6 @@ func verifyCorePluginCatalogue(t *testing.T, ctx context.Context, ps *store.Serv
 		"gettingstarted": {},
 		"graph":          {},
 		"heatmap":        {},
-		"heatmap-old":    {},
 		"histogram":      {},
 		"icon":           {},
 		"live":           {},
@@ -164,6 +174,7 @@ func verifyCorePluginCatalogue(t *testing.T, ctx context.Context, ps *store.Serv
 		"candlestick":    {},
 		"news":           {},
 		"nodeGraph":      {},
+		"flamegraph":     {},
 		"traces":         {},
 		"piechart":       {},
 		"stat":           {},
@@ -199,6 +210,8 @@ func verifyCorePluginCatalogue(t *testing.T, ctx context.Context, ps *store.Serv
 		"jaeger":                           {},
 		"mixed":                            {},
 		"zipkin":                           {},
+		"phlare":                           {},
+		"parca":                            {},
 	}
 
 	expApps := map[string]struct{}{
@@ -235,7 +248,7 @@ func verifyCorePluginCatalogue(t *testing.T, ctx context.Context, ps *store.Serv
 	require.Equal(t, len(expPanels)+len(expDataSources)+len(expApps), len(ps.Plugins(ctx)))
 }
 
-func verifyBundledPlugins(t *testing.T, ctx context.Context, ps *store.Service) {
+func verifyBundledPlugins(t *testing.T, ctx context.Context, ps *store.Service, reg registry.Service) {
 	t.Helper()
 
 	dsPlugins := make(map[string]struct{})
@@ -248,6 +261,9 @@ func verifyBundledPlugins(t *testing.T, ctx context.Context, ps *store.Service) 
 	require.NotEqual(t, plugins.PluginDTO{}, inputPlugin)
 	require.NotNil(t, dsPlugins["input"])
 
+	intInputPlugin, exists := reg.Plugin(ctx, "input")
+	require.True(t, exists)
+
 	pluginRoutes := make(map[string]*plugins.StaticRoute)
 	for _, r := range ps.Routes() {
 		pluginRoutes[r.PluginID] = r
@@ -255,23 +271,23 @@ func verifyBundledPlugins(t *testing.T, ctx context.Context, ps *store.Service) 
 
 	for _, pluginID := range []string{"input"} {
 		require.Contains(t, pluginRoutes, pluginID)
-		require.True(t, strings.HasPrefix(pluginRoutes[pluginID].Directory, inputPlugin.PluginDir))
+		require.True(t, strings.HasPrefix(pluginRoutes[pluginID].Directory, intInputPlugin.PluginDir))
 	}
 }
 
-func verifyPluginStaticRoutes(t *testing.T, ctx context.Context, ps *store.Service) {
+func verifyPluginStaticRoutes(t *testing.T, ctx context.Context, rr plugins.StaticRouteResolver, reg registry.Service) {
 	routes := make(map[string]*plugins.StaticRoute)
-	for _, route := range ps.Routes() {
+	for _, route := range rr.Routes() {
 		routes[route.PluginID] = route
 	}
 
 	require.Len(t, routes, 2)
 
-	inputPlugin, _ := ps.Plugin(ctx, "input")
+	inputPlugin, _ := reg.Plugin(ctx, "input")
 	require.NotNil(t, routes["input"])
 	require.Equal(t, routes["input"].Directory, inputPlugin.PluginDir)
 
-	testAppPlugin, _ := ps.Plugin(ctx, "test-app")
+	testAppPlugin, _ := reg.Plugin(ctx, "test-app")
 	require.Contains(t, routes, "test-app")
 	require.Equal(t, routes["test-app"].Directory, testAppPlugin.PluginDir)
 }
@@ -284,20 +300,4 @@ func verifyBackendProcesses(t *testing.T, ps []*plugins.Plugin) {
 			require.NotNil(t, pc)
 		}
 	}
-}
-
-type fakeTracer struct {
-	tracing.Tracer
-}
-
-func (ft *fakeTracer) Run(context.Context) error {
-	return nil
-}
-
-func (ft *fakeTracer) Start(ctx context.Context, _ string, _ ...trace.SpanStartOption) (context.Context, tracing.Span) {
-	return ctx, nil
-}
-
-func (ft *fakeTracer) Inject(context.Context, http.Header, tracing.Span) {
-
 }

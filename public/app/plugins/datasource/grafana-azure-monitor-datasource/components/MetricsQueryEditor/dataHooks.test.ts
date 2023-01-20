@@ -45,13 +45,21 @@ describe('AzureMonitor: metrics dataHooks', () => {
       hook: useMetricNames,
       emptyQueryPartial: {
         metricNamespace: 'azure/vm',
-        resourceGroup: 'rg',
-        resourceName: 'rn',
+        resources: [
+          {
+            resourceGroup: 'rg',
+            resourceName: 'rn',
+          },
+        ],
       },
       customProperties: {
         metricNamespace: 'azure/vm',
-        resourceGroup: 'rg',
-        resourceName: 'rn',
+        resources: [
+          {
+            resourceGroup: 'rg',
+            resourceName: 'rn',
+          },
+        ],
         metricName: 'metric-$ENVIRONMENT',
       },
       expectedOptions: [
@@ -75,13 +83,21 @@ describe('AzureMonitor: metrics dataHooks', () => {
       hook: useMetricNamespaces,
       emptyQueryPartial: {
         metricNamespace: 'azure/vm',
-        resourceGroup: 'rg',
-        resourceName: 'rn',
+        resources: [
+          {
+            resourceGroup: 'rg',
+            resourceName: 'rn',
+          },
+        ],
       },
       customProperties: {
         metricNamespace: 'azure/vm-$ENVIRONMENT',
-        resourceGroup: 'rg',
-        resourceName: 'rn',
+        resources: [
+          {
+            resourceGroup: 'rg',
+            resourceName: 'rn',
+          },
+        ],
         metricName: 'metric-name',
       },
       expectedOptions: [
@@ -188,8 +204,12 @@ describe('AzureMonitor: metrics dataHooks', () => {
       name: 'useMetricMetadata',
       hook: useMetricMetadata,
       emptyQueryPartial: {
-        resourceGroup: 'rg',
-        resourceName: 'rn',
+        resources: [
+          {
+            resourceGroup: 'rg',
+            resourceName: 'rn',
+          },
+        ],
         metricNamespace: 'azure/vm',
         metricName: 'Average CPU',
       },
@@ -232,6 +252,50 @@ describe('AzureMonitor: metrics dataHooks', () => {
           allowedTimeGrainsMs: [60_000, 300_000, 900_000, 1_800_000, 3_600_000, 21_600_000, 43_200_000, 86_400_000],
         },
       });
+    });
+  });
+
+  describe('useMetricNamespaces', () => {
+    const metricNamespacesConfig = {
+      name: 'useMetricNamespaces',
+      hook: useMetricNamespaces,
+      emptyQueryPartial: {
+        resources: [
+          {
+            resourceGroup: 'rg',
+            resourceName: 'rn',
+          },
+        ],
+        metricNamespace: 'azure/vm',
+      },
+      customProperties: {},
+      expectedOptions: [
+        { label: 'Compute Virtual Machine', value: 'azure/vmc' },
+        { label: 'Database NS', value: 'azure/dbns' },
+        { label: 'azure/vm', value: 'azure/vm' },
+      ],
+    };
+
+    it('call getMetricNamespaces without global region', async () => {
+      const query = {
+        ...bareQuery,
+        azureMonitor: metricNamespacesConfig.emptyQueryPartial,
+      };
+      const { result, waitForNextUpdate } = renderHook(() =>
+        metricNamespacesConfig.hook(query, datasource, onChange, jest.fn())
+      );
+      await waitForNextUpdate(WAIT_OPTIONS);
+
+      expect(result.current).toEqual(metricNamespacesConfig.expectedOptions);
+      expect(datasource.azureMonitorDatasource.getMetricNamespaces).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resourceGroup: 'rg',
+          resourceName: 'rn',
+          metricNamespace: 'azure/vm',
+        }),
+        // Here, "global" should be false
+        false
+      );
     });
   });
 });

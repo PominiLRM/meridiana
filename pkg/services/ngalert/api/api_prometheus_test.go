@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	alertingModels "github.com/grafana/alerting/alerting/models"
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/models"
 	acmock "github.com/grafana/grafana/pkg/services/accesscontrol/mock"
@@ -20,7 +21,7 @@ import (
 	"github.com/grafana/grafana/pkg/services/ngalert/eval"
 	ngmodels "github.com/grafana/grafana/pkg/services/ngalert/models"
 	"github.com/grafana/grafana/pkg/services/ngalert/state"
-	"github.com/grafana/grafana/pkg/services/ngalert/store"
+	"github.com/grafana/grafana/pkg/services/ngalert/tests/fakes"
 	"github.com/grafana/grafana/pkg/services/org"
 	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/grafana/grafana/pkg/util"
@@ -423,7 +424,7 @@ func TestRouteGetRuleStatuses(t *testing.T) {
 
 	t.Run("with many rules in a group", func(t *testing.T) {
 		t.Run("should return sorted", func(t *testing.T) {
-			ruleStore := store.NewFakeRuleStore(t)
+			ruleStore := fakes.NewRuleStore(t)
 			fakeAIM := NewFakeAlertInstanceManager(t)
 			groupKey := ngmodels.GenerateGroupKey(orgID)
 			_, rules := ngmodels.GenerateUniqueAlertRules(rand.Intn(5)+5, ngmodels.AlertRuleGen(withGroupKey(groupKey), ngmodels.WithUniqueGroupIndex()))
@@ -466,7 +467,7 @@ func TestRouteGetRuleStatuses(t *testing.T) {
 
 	t.Run("when fine-grained access is enabled", func(t *testing.T) {
 		t.Run("should return only rules if the user can query all data sources", func(t *testing.T) {
-			ruleStore := store.NewFakeRuleStore(t)
+			ruleStore := fakes.NewRuleStore(t)
 			fakeAIM := NewFakeAlertInstanceManager(t)
 
 			rules := ngmodels.GenerateAlertRules(rand.Intn(4)+2, ngmodels.AlertRuleGen(withOrgID(orgID)))
@@ -503,8 +504,8 @@ func TestRouteGetRuleStatuses(t *testing.T) {
 	})
 }
 
-func setupAPI(t *testing.T) (*store.FakeRuleStore, *fakeAlertInstanceManager, *acmock.Mock, PrometheusSrv) {
-	fakeStore := store.NewFakeRuleStore(t)
+func setupAPI(t *testing.T) (*fakes.RuleStore, *fakeAlertInstanceManager, *acmock.Mock, PrometheusSrv) {
+	fakeStore := fakes.NewRuleStore(t)
 	fakeAIM := NewFakeAlertInstanceManager(t)
 	acMock := acmock.New().WithDisabled()
 
@@ -518,16 +519,16 @@ func setupAPI(t *testing.T) (*store.FakeRuleStore, *fakeAlertInstanceManager, *a
 	return fakeStore, fakeAIM, acMock, api
 }
 
-func generateRuleAndInstanceWithQuery(t *testing.T, orgID int64, fakeAIM *fakeAlertInstanceManager, fakeStore *store.FakeRuleStore, query func(r *ngmodels.AlertRule)) {
+func generateRuleAndInstanceWithQuery(t *testing.T, orgID int64, fakeAIM *fakeAlertInstanceManager, fakeStore *fakes.RuleStore, query func(r *ngmodels.AlertRule)) {
 	t.Helper()
 
 	rules := ngmodels.GenerateAlertRules(1, ngmodels.AlertRuleGen(withOrgID(orgID), asFixture(), query))
 
 	fakeAIM.GenerateAlertInstances(orgID, rules[0].UID, 1, func(s *state.State) *state.State {
 		s.Labels = data.Labels{
-			"job":                      "prometheus",
-			ngmodels.NamespaceUIDLabel: "test_namespace_uid",
-			ngmodels.RuleUIDLabel:      "test_alert_rule_uid_0",
+			"job":                            "prometheus",
+			alertingModels.NamespaceUIDLabel: "test_namespace_uid",
+			alertingModels.RuleUIDLabel:      "test_alert_rule_uid_0",
 		}
 		s.Annotations = data.Labels{"severity": "critical"}
 		return s
@@ -548,7 +549,7 @@ func asFixture() func(r *ngmodels.AlertRule) {
 		r.UID = "RuleUID"
 		r.Labels = map[string]string{
 			"__a_private_label_on_the_rule__": "a_value",
-			ngmodels.RuleUIDLabel:             "RuleUID",
+			alertingModels.RuleUIDLabel:       "RuleUID",
 		}
 		r.Annotations = nil
 		r.IntervalSeconds = 60

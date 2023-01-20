@@ -1,25 +1,28 @@
 import { css } from '@emotion/css';
 import React from 'react';
-import { useSelector } from 'react-redux';
 
-import { DataSourceSettings } from '@grafana/data';
-import { Card, Tag, useStyles } from '@grafana/ui';
+import { DataSourceSettings, GrafanaTheme2 } from '@grafana/data';
+import { config } from '@grafana/runtime';
+import { LinkButton, Card, Tag, useStyles2 } from '@grafana/ui';
 import EmptyListCTA from 'app/core/components/EmptyListCTA/EmptyListCTA';
 import PageLoader from 'app/core/components/PageLoader/PageLoader';
 import { contextSrv } from 'app/core/core';
-import { StoreState, AccessControlAction } from 'app/types';
+import { StoreState, AccessControlAction, useSelector } from 'app/types';
 
 import { getDataSources, getDataSourcesCount, useDataSourcesRoutes, useLoadDataSources } from '../state';
+import { constructDataSourceExploreUrl } from '../utils';
 
 import { DataSourcesListHeader } from './DataSourcesListHeader';
 
 export function DataSourcesList() {
   useLoadDataSources();
 
-  const dataSources = useSelector((state: StoreState) => getDataSources(state.dataSources));
+  const dataSources = useSelector((state) => getDataSources(state.dataSources));
   const dataSourcesCount = useSelector(({ dataSources }: StoreState) => getDataSourcesCount(dataSources));
   const hasFetched = useSelector(({ dataSources }: StoreState) => dataSources.hasFetched);
   const hasCreateRights = contextSrv.hasPermission(AccessControlAction.DataSourcesCreate);
+  const hasWriteRights = contextSrv.hasPermission(AccessControlAction.DataSourcesWrite);
+  const hasExploreRights = contextSrv.hasPermission(AccessControlAction.DataSourcesExplore);
 
   return (
     <DataSourcesListView
@@ -27,6 +30,8 @@ export function DataSourcesList() {
       dataSourcesCount={dataSourcesCount}
       isLoading={!hasFetched}
       hasCreateRights={hasCreateRights}
+      hasWriteRights={hasWriteRights}
+      hasExploreRights={hasExploreRights}
     />
   );
 }
@@ -36,10 +41,19 @@ export type ViewProps = {
   dataSourcesCount: number;
   isLoading: boolean;
   hasCreateRights: boolean;
+  hasWriteRights: boolean;
+  hasExploreRights: boolean;
 };
 
-export function DataSourcesListView({ dataSources, dataSourcesCount, isLoading, hasCreateRights }: ViewProps) {
-  const styles = useStyles(getStyles);
+export function DataSourcesListView({
+  dataSources,
+  dataSourcesCount,
+  isLoading,
+  hasCreateRights,
+  hasWriteRights,
+  hasExploreRights,
+}: ViewProps) {
+  const styles = useStyles2(getStyles);
   const dataSourcesRoutes = useDataSourcesRoutes();
 
   if (isLoading) {
@@ -70,9 +84,10 @@ export function DataSourcesListView({ dataSources, dataSourcesCount, isLoading, 
       {/* List */}
       <ul className={styles.list}>
         {dataSources.map((dataSource) => {
+          const dsLink = config.appSubUrl + dataSourcesRoutes.Edit.replace(/:uid/gi, dataSource.uid);
           return (
             <li key={dataSource.uid}>
-              <Card href={dataSourcesRoutes.Edit.replace(/:uid/gi, dataSource.uid)}>
+              <Card href={hasWriteRights ? dsLink : undefined}>
                 <Card.Heading>{dataSource.name}</Card.Heading>
                 <Card.Figure>
                   <img src={dataSource.typeLogoUrl} alt="" height="40px" width="40px" className={styles.logo} />
@@ -84,6 +99,27 @@ export function DataSourcesListView({ dataSources, dataSourcesCount, isLoading, 
                     dataSource.isDefault && <Tag key="default-tag" name={'default'} colorIndex={1} />,
                   ]}
                 </Card.Meta>
+                <Card.Tags>
+                  <LinkButton
+                    icon="apps"
+                    fill="outline"
+                    variant="secondary"
+                    href={`dashboard/new-with-ds/${dataSource.uid}`}
+                  >
+                    Build a dashboard
+                  </LinkButton>
+                  {hasExploreRights && (
+                    <LinkButton
+                      icon="compass"
+                      fill="outline"
+                      variant="secondary"
+                      className={styles.button}
+                      href={constructDataSourceExploreUrl(dataSource)}
+                    >
+                      Explore
+                    </LinkButton>
+                  )}
+                </Card.Tags>
               </Card>
             </li>
           );
@@ -93,7 +129,7 @@ export function DataSourcesListView({ dataSources, dataSourcesCount, isLoading, 
   );
 }
 
-const getStyles = () => {
+const getStyles = (theme: GrafanaTheme2) => {
   return {
     list: css({
       listStyle: 'none',
@@ -102,6 +138,9 @@ const getStyles = () => {
     }),
     logo: css({
       objectFit: 'contain',
+    }),
+    button: css({
+      marginLeft: theme.spacing(2),
     }),
   };
 };

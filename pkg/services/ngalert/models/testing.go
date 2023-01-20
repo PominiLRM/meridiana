@@ -8,7 +8,8 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/data"
 
-	models2 "github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/expr"
+	"github.com/grafana/grafana/pkg/services/folder"
 	"github.com/grafana/grafana/pkg/util"
 )
 
@@ -59,7 +60,7 @@ func AlertRuleGen(mutators ...AlertRuleMutator) func() *AlertRule {
 
 		rule := &AlertRule{
 			ID:              rand.Int63n(1500),
-			OrgID:           rand.Int63n(1500),
+			OrgID:           rand.Int63n(1500) + 1, // Prevent OrgID=0 as this does not pass alert rule validation.
 			Title:           "TEST-ALERT-" + util.GenerateShortUID(),
 			Condition:       "A",
 			Data:            []AlertQuery{GenerateAlertQuery()},
@@ -139,9 +140,27 @@ func WithOrgID(orgId int64) AlertRuleMutator {
 	}
 }
 
-func WithNamespace(namespace *models2.Folder) AlertRuleMutator {
+func WithNamespace(namespace *folder.Folder) AlertRuleMutator {
 	return func(rule *AlertRule) {
-		rule.NamespaceUID = namespace.Uid
+		rule.NamespaceUID = namespace.UID
+	}
+}
+
+func WithInterval(interval time.Duration) AlertRuleMutator {
+	return func(rule *AlertRule) {
+		rule.IntervalSeconds = int64(interval.Seconds())
+	}
+}
+
+func WithTitle(title string) AlertRuleMutator {
+	return func(rule *AlertRule) {
+		rule.Title = title
+	}
+}
+
+func WithFor(duration time.Duration) AlertRuleMutator {
+	return func(rule *AlertRule) {
+		rule.For = duration
 	}
 }
 
@@ -275,4 +294,46 @@ func CopyRule(r *AlertRule) *AlertRule {
 	}
 
 	return &result
+}
+
+func CreateClassicConditionExpression(refID string, inputRefID string, reducer string, operation string, threshold int) AlertQuery {
+	return AlertQuery{
+		RefID:         refID,
+		QueryType:     expr.DatasourceType,
+		DatasourceUID: expr.OldDatasourceUID,
+		// the format corresponds to model `ClassicConditionJSON` in /pkg/expr/classic/classic.go
+		Model: json.RawMessage(fmt.Sprintf(`
+		{
+			"refId": "%[1]s",
+            "hide": false,
+            "type": "classic_conditions",
+            "datasource": {
+                "uid": "%[6]s",
+                "type": "%[7]s"
+            },
+            "conditions": [
+                {
+                    "type": "query",
+                    "evaluator": {
+                        "params": [
+                            %[4]d
+                        ],
+                        "type": "%[3]s"
+                    },
+                    "operator": {
+                        "type": "and"
+                    },
+                    "query": {
+                        "params": [
+                            "%[2]s"
+                        ]
+                    },
+                    "reducer": {
+                        "params": [],
+                        "type": "%[5]s"
+                    }
+                }
+            ]
+		}`, refID, inputRefID, operation, threshold, reducer, expr.OldDatasourceUID, expr.DatasourceType)),
+	}
 }

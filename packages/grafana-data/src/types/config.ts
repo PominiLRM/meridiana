@@ -6,7 +6,7 @@ import { DataSourceInstanceSettings } from './datasource';
 import { FeatureToggles } from './featureToggles.gen';
 import { PanelPluginMeta } from './panel';
 
-import { GrafanaTheme, NavLinkDTO, OrgRole } from '.';
+import { GrafanaTheme, IconName, NavLinkDTO, OrgRole } from '.';
 
 /**
  * Describes the build information that will be available via the Grafana configuration.
@@ -104,7 +104,7 @@ export type OAuth =
  *
  * @public
  */
-export type OAuthSettings = Partial<Record<OAuth, { name: string; icon?: string }>>;
+export type OAuthSettings = Partial<Record<OAuth, { name: string; icon?: IconName }>>;
 
 /** Current user info included in bootData
  *
@@ -127,6 +127,7 @@ export interface CurrentUserDTO {
   timezone: string;
   weekStart: string;
   locale: string;
+  language: string;
   permissions?: Record<string, boolean>;
 }
 
@@ -153,6 +154,7 @@ export interface GrafanaConfig {
   isPublicDashboardView: boolean;
   datasources: { [str: string]: DataSourceInstanceSettings };
   panels: { [key: string]: PanelPluginMeta };
+  auth: AuthSettings;
   minRefreshInterval: string;
   appSubUrl: string;
   windowTitlePrefix: string;
@@ -209,8 +211,21 @@ export interface GrafanaConfig {
   feedbackLinksEnabled: boolean;
   secretsManagerPluginEnabled: boolean;
   googleAnalyticsId: string | undefined;
+  googleAnalytics4Id: string | undefined;
+  googleAnalytics4SendManualPageViews: boolean;
   rudderstackWriteKey: string | undefined;
   rudderstackDataPlaneUrl: string | undefined;
   rudderstackSdkUrl: string | undefined;
   rudderstackConfigUrl: string | undefined;
+}
+
+export interface AuthSettings {
+  OAuthSkipOrgRoleUpdateSync?: boolean;
+  SAMLSkipOrgRoleSync?: boolean;
+  LDAPSkipOrgRoleSync?: boolean;
+  JWTAuthSkipOrgRoleSync?: boolean;
+  GrafanaComSkipOrgRoleSync?: boolean;
+  AzureADSkipOrgRoleSync?: boolean;
+  GoogleSkipOrgRoleSync?: boolean;
+  DisableSyncLock?: boolean;
 }

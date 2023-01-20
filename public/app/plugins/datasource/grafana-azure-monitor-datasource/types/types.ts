@@ -26,7 +26,6 @@ export enum AzureCloud {
   Public = 'AzureCloud',
   China = 'AzureChinaCloud',
   USGovernment = 'AzureUSGovernment',
-  Germany = 'AzureGermanCloud',
   None = '',
 }
 
@@ -159,12 +158,14 @@ export interface AzureMonitorOption<T = string> {
   options?: AzureMonitorOption[];
 }
 
+export type VariableOptionGroup = { label: string; options: AzureMonitorOption[] };
+
 export interface AzureQueryEditorFieldProps {
   data?: PanelData;
   query: AzureMonitorQuery;
   datasource: Datasource;
   subscriptionId?: string;
-  variableOptionGroup: { label: string; options: AzureMonitorOption[] };
+  variableOptionGroup: VariableOptionGroup;
 
   onQueryChange: (newQuery: AzureMonitorQuery) => void;
   setError: (source: string, error: AzureMonitorErrorish | undefined) => void;
@@ -232,6 +233,7 @@ export interface LegacyAzureGetMetricNamespacesQuery {
 export interface AzureGetMetricNamesQuery {
   resourceUri: string;
   metricNamespace?: string;
+  customNamespace?: string;
 }
 
 export interface LegacyAzureGetMetricNamesQuery {
@@ -239,11 +241,13 @@ export interface LegacyAzureGetMetricNamesQuery {
   resourceGroup: string;
   resourceName: string;
   metricNamespace: string;
+  customNamespace?: string;
 }
 
 export interface AzureGetMetricMetadataQuery {
   resourceUri: string;
   metricNamespace: string;
+  customNamespace?: string;
   metricName: string;
 }
 
@@ -252,5 +256,51 @@ export interface LegacyAzureGetMetricMetadataQuery {
   resourceGroup: string;
   resourceName: string;
   metricNamespace: string;
+  customNamespace?: string;
   metricName: string;
+}
+
+export interface AzureMonitorLocations {
+  displayName: string;
+  name: string;
+  supportsLogs?: boolean;
+}
+
+export interface AzureMonitorProvidersResponse {
+  namespace: string;
+  resourceTypes: ProviderResourceType[];
+}
+
+export interface ProviderResourceType {
+  resourceType: string;
+  locations: string[];
+  apiVersions: string[];
+  capabilities: string;
+}
+
+export interface AzureMonitorLocationsResponse {
+  value: Location[];
+}
+
+interface Location {
+  id: string;
+  name: string;
+  displayName: string;
+  regionalDisplayName: string;
+  metadata: LocationMetadata;
+}
+
+interface LocationMetadata {
+  regionType: string;
+  regionCategory: string;
+  geographyGroup: string;
+  longitude: string;
+  latitude: string;
+  physicalLocation: string;
+  pairedRegion: LocationPairedRegion[];
+}
+
+interface LocationPairedRegion {
+  name: string;
+  id: string;
 }

@@ -6,20 +6,25 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/grafana/pkg/infra/db"
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/infra/remotecache"
 	"github.com/grafana/grafana/pkg/infra/tracing"
 	"github.com/grafana/grafana/pkg/models"
-	"github.com/grafana/grafana/pkg/services/auth"
+	"github.com/grafana/grafana/pkg/services/auth/authtest"
+	"github.com/grafana/grafana/pkg/services/authn/authntest"
 	"github.com/grafana/grafana/pkg/services/contexthandler/authproxy"
+	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/services/login/loginservice"
+	"github.com/grafana/grafana/pkg/services/org/orgtest"
 	"github.com/grafana/grafana/pkg/services/rendering"
-	"github.com/grafana/grafana/pkg/services/sqlstore"
+	"github.com/grafana/grafana/pkg/services/secrets/fakes"
 	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/grafana/grafana/pkg/services/user/usertest"
 	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/web"
-	"github.com/stretchr/testify/require"
 )
 
 const userID = int64(1)
@@ -67,7 +72,7 @@ type fakeRenderService struct {
 func getContextHandler(t *testing.T) *ContextHandler {
 	t.Helper()
 
-	sqlStore := sqlstore.InitTestDB(t)
+	sqlStore := db.InitTestDB(t)
 
 	cfg := setting.NewCfg()
 	cfg.RemoteCacheOptions = &setting.RemoteCacheOptions{
@@ -76,34 +81,33 @@ func getContextHandler(t *testing.T) *ContextHandler {
 	cfg.AuthProxyHeaderName = "X-Killa"
 	cfg.AuthProxyEnabled = true
 	cfg.AuthProxyHeaderProperty = "username"
-	remoteCacheSvc, err := remotecache.ProvideService(cfg, sqlStore)
+	remoteCacheSvc, err := remotecache.ProvideService(cfg, sqlStore, fakes.NewFakeSecretsService())
 	require.NoError(t, err)
-	userAuthTokenSvc := auth.NewFakeUserAuthTokenService()
+	userAuthTokenSvc := authtest.NewFakeUserAuthTokenService()
 	renderSvc := &fakeRenderService{}
 	authJWTSvc := models.NewFakeJWTService()
 	tracer := tracing.InitializeTracerForTest()
 
 	loginService := loginservice.LoginServiceMock{ExpectedUser: &user.User{ID: userID}}
-	authProxy := authproxy.ProvideAuthProxy(cfg, remoteCacheSvc, loginService, &FakeGetSignUserStore{})
+	userService := usertest.FakeUserService{
+		GetSignedInUserFn: func(ctx context.Context, query *user.GetSignedInUserQuery) (*user.SignedInUser, error) {
+			if query.UserID != userID {
+				return &user.SignedInUser{}, user.ErrUserNotFound
+			}
+			return &user.SignedInUser{
+				UserID: userID,
+				OrgID:  orgID,
+			}, nil
+		},
+	}
+	orgService := orgtest.NewOrgServiceFake()
+
+	authProxy := authproxy.ProvideAuthProxy(cfg, remoteCacheSvc, loginService, &userService, nil)
 	authenticator := &fakeAuthenticator{}
 
-	return ProvideService(cfg, userAuthTokenSvc, authJWTSvc, remoteCacheSvc, renderSvc, sqlStore, tracer, authProxy, loginService, nil, authenticator, &usertest.FakeUserService{})
-}
-
-type FakeGetSignUserStore struct {
-	sqlstore.Store
-}
-
-func (f *FakeGetSignUserStore) GetSignedInUser(ctx context.Context, query *models.GetSignedInUserQuery) error {
-	if query.UserId != userID {
-		return user.ErrUserNotFound
-	}
-
-	query.Result = &user.SignedInUser{
-		UserID: userID,
-		OrgID:  orgID,
-	}
-	return nil
+	return ProvideService(cfg, userAuthTokenSvc, authJWTSvc, remoteCacheSvc,
+		renderSvc, sqlStore, tracer, authProxy, loginService, nil, authenticator,
+		&userService, orgService, nil, featuremgmt.WithFeatures(), &authntest.FakeService{})
 }
 
 type fakeAuthenticator struct{}

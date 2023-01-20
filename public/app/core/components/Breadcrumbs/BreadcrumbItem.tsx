@@ -2,7 +2,8 @@ import { css, cx } from '@emotion/css';
 import React from 'react';
 
 import { GrafanaTheme2 } from '@grafana/data';
-import { Icon, LinkButton, useStyles2 } from '@grafana/ui';
+import { Components } from '@grafana/e2e-selectors';
+import { Icon, useStyles2 } from '@grafana/ui';
 
 import { Breadcrumb } from './types';
 
@@ -10,30 +11,23 @@ type Props = Breadcrumb & {
   isCurrent: boolean;
 };
 
-export function BreadcrumbItem(props: Props) {
+export function BreadcrumbItem({ href, isCurrent, text }: Props) {
   const styles = useStyles2(getStyles);
   return (
     <li className={styles.breadcrumbWrapper}>
-      {props.isCurrent ? (
-        <span className={styles.breadcrumb} aria-current="page">
-          {props.text}
+      {isCurrent ? (
+        <span data-testid={Components.Breadcrumbs.breadcrumb(text)} className={styles.breadcrumb} aria-current="page">
+          {text}
         </span>
       ) : (
         <>
-          {'icon' in props ? (
-            <LinkButton
-              size="md"
-              variant="secondary"
-              fill="text"
-              icon={props.icon}
-              href={props.href}
-              aria-label={props.text}
-            />
-          ) : (
-            <a className={cx(styles.breadcrumb, styles.breadcrumbLink)} href={props.href}>
-              {props.text}
-            </a>
-          )}
+          <a
+            data-testid={Components.Breadcrumbs.breadcrumb(text)}
+            className={cx(styles.breadcrumb, styles.breadcrumbLink)}
+            href={href}
+          >
+            {text}
+          </a>
           <div className={styles.separator} aria-hidden={true}>
             <Icon name="angle-right" />
           </div>
@@ -50,12 +44,15 @@ const getStyles = (theme: GrafanaTheme2) => {
 
   return {
     breadcrumb: css({
-      alignItems: 'center',
-      display: 'flex',
+      display: 'block',
+      textOverflow: 'ellipsis',
+      overflow: 'hidden',
       padding: theme.spacing(0, 0.5),
       whiteSpace: 'nowrap',
+      color: theme.colors.text.secondary,
     }),
     breadcrumbLink: css({
+      color: theme.colors.text.primary,
       '&:hover': {
         textDecoration: 'underline',
       },
@@ -64,10 +61,13 @@ const getStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
       color: theme.colors.text.primary,
       display: 'flex',
-      fontWeight: theme.typography.fontWeightMedium,
+      flex: 1,
+      minWidth: 0,
+      maxWidth: 'max-content',
 
       // logic for small screens
       // hide any breadcrumbs that aren't the second to last child (the parent)
+      // unless there's only one breadcrumb, in which case we show it
       [theme.breakpoints.down('md')]: {
         display: 'none',
         '&:nth-last-child(2)': {
@@ -76,6 +76,13 @@ const getStyles = (theme: GrafanaTheme2) => {
 
           [`.${separator}`]: {
             transform: 'rotate(180deg)',
+          },
+        },
+        '&:first-child&:last-child': {
+          display: 'flex',
+
+          [`.${separator}`]: {
+            display: 'none',
           },
         },
       },

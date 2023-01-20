@@ -1,24 +1,28 @@
 //go:build ignore
 // +build ignore
 
+//go:generate go run gen.go
+
 package main
 
 import (
-	"errors"
+	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
-	"sort"
+	"strings"
 
-	"github.com/grafana/grafana/pkg/codegen"
+	"github.com/grafana/codejen"
+	corecodegen "github.com/grafana/grafana/pkg/codegen"
 	"github.com/grafana/grafana/pkg/cuectx"
+	"github.com/grafana/grafana/pkg/plugins/codegen"
 	"github.com/grafana/grafana/pkg/plugins/pfs"
 )
 
 var skipPlugins = map[string]bool{
 	"canvas":         true,
 	"heatmap":        true,
-	"heatmap-old":    true,
 	"candlestick":    true,
 	"state-timeline": true,
 	"status-history": true,
@@ -29,79 +33,59 @@ var skipPlugins = map[string]bool{
 	"opentsdb":       true, // plugin.json fails validation (defaultMatchFormat)
 }
 
-// Generate TypeScript for all plugin models.cue
+const sep = string(filepath.Separator)
+
 func main() {
 	if len(os.Args) > 1 {
-		fmt.Fprintf(os.Stderr, "plugin thema code generator does not currently accept any arguments\n, got %q", os.Args)
-		os.Exit(1)
+		log.Fatal(fmt.Errorf("plugin thema code generator does not currently accept any arguments\n, got %q", os.Args))
 	}
 
 	cwd, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "could not get working directory: %s", err)
-		os.Exit(1)
+		log.Fatal(fmt.Errorf("could not get working directory: %s", err))
 	}
+	grootp := strings.Split(cwd, sep)
+	groot := filepath.Join(sep, filepath.Join(grootp[:len(grootp)-3]...))
+	rt := cuectx.GrafanaThemaRuntime()
 
-	wd := codegen.NewWriteDiffer()
-	lib := cuectx.ProvideThemaLibrary()
-
-	type ptreepath struct {
-		fullpath string
-		tree     *codegen.PluginTree
-	}
-	var ptrees []ptreepath
-	for _, typ := range []string{"datasource", "panel"} {
-		dir := filepath.Join(cwd, typ)
-		treeor, err := codegen.ExtractPluginTrees(os.DirFS(dir), lib)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "extracting plugin trees failed for %s: %s\n", dir, err)
-			os.Exit(1)
-		}
-
-		for name, option := range treeor {
-			if skipPlugins[name] {
-				continue
-			}
-
-			if option.Tree != nil {
-				ptrees = append(ptrees, ptreepath{
-					fullpath: filepath.Join(typ, name),
-					tree:     option.Tree,
-				})
-			} else if !errors.Is(option.Err, pfs.ErrNoRootFile) {
-				fmt.Fprintf(os.Stderr, "error parsing plugin directory %s: %s\n", filepath.Join(dir, name), option.Err)
-				os.Exit(1)
-			}
-		}
-	}
-
-	// Ensure ptrees are sorted, so that visit order is deterministic. Otherwise
-	// having multiple core plugins with errors can cause confusing error
-	// flip-flopping
-	sort.Slice(ptrees, func(i, j int) bool {
-		return ptrees[i].fullpath < ptrees[j].fullpath
+	pluginKindGen := codejen.JennyListWithNamer(func(d *pfs.PluginDecl) string {
+		return d.PluginMeta.Id
 	})
 
-	for _, ptp := range ptrees {
-		twd, err := ptp.tree.GenerateTS(ptp.fullpath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "generating typescript failed for %s: %s\n", ptp.fullpath, err)
-			os.Exit(1)
-		}
-		wd.Merge(twd)
+	pluginKindGen.Append(
+		codegen.PluginTreeListJenny(),
+		codegen.PluginGoTypesJenny("pkg/tsdb", adaptToPipeline(corecodegen.GoTypesJenny{})),
+		codegen.PluginTSTypesJenny("public/app/plugins", adaptToPipeline(corecodegen.TSTypesJenny{})),
+	)
+
+	pluginKindGen.AddPostprocessors(corecodegen.SlashHeaderMapper("public/app/plugins/gen.go"))
+
+	declParser := pfs.NewDeclParser(rt, skipPlugins)
+	decls, err := declParser.Parse(os.DirFS(cwd))
+	if err != nil {
+		log.Fatalln(fmt.Errorf("parsing plugins in dir failed %s: %s", cwd, err))
+	}
+
+	jfs, err := pluginKindGen.GenerateFS(decls...)
+	if err != nil {
+		log.Fatalln(fmt.Errorf("error writing files to disk: %s", err))
 	}
 
 	if _, set := os.LookupEnv("CODEGEN_VERIFY"); set {
-		err = wd.Verify()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "generated code is out of sync with inputs:\n%s\nrun `make gen-cue` to regenerate\n\n", err)
-			os.Exit(1)
+		if err = jfs.Verify(context.Background(), groot); err != nil {
+			log.Fatal(fmt.Errorf("generated code is out of sync with inputs:\n%s\nrun `make gen-cue` to regenerate", err))
 		}
-	} else {
-		err = wd.Write()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error while writing generated code to disk:\n%s\n", err)
-			os.Exit(1)
-		}
+	} else if err = jfs.Write(context.Background(), groot); err != nil {
+		log.Fatal(fmt.Errorf("error while writing generated code to disk:\n%s", err))
 	}
+}
+
+func adaptToPipeline(j codejen.OneToOne[corecodegen.SchemaForGen]) codejen.OneToOne[*pfs.PluginDecl] {
+	return codejen.AdaptOneToOne(j, func(pd *pfs.PluginDecl) corecodegen.SchemaForGen {
+		return corecodegen.SchemaForGen{
+			Name:    pd.PluginMeta.Name,
+			Schema:  pd.Lineage.Latest(),
+			IsGroup: pd.SchemaInterface.IsGroup(),
+		}
+	})
 }

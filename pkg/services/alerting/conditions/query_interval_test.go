@@ -5,11 +5,13 @@ import (
 	"testing"
 
 	"github.com/grafana/grafana/pkg/components/simplejson"
+	"github.com/grafana/grafana/pkg/infra/db/dbtest"
+	"github.com/grafana/grafana/pkg/infra/localcache"
 	"github.com/grafana/grafana/pkg/services/alerting"
 	"github.com/grafana/grafana/pkg/services/datasources"
 	fd "github.com/grafana/grafana/pkg/services/datasources/fakes"
-	"github.com/grafana/grafana/pkg/services/sqlstore/mockstore"
 	"github.com/grafana/grafana/pkg/services/validations"
+	"github.com/grafana/grafana/pkg/setting"
 	"github.com/grafana/grafana/pkg/tsdb/intervalv2"
 	"github.com/grafana/grafana/pkg/tsdb/legacydata"
 
@@ -127,7 +129,7 @@ type fakeIntervalTestReqHandler struct {
 	verifier queryIntervalVerifier
 }
 
-//nolint: staticcheck // legacydata.DataResponse deprecated
+//nolint:staticcheck // legacydata.DataResponse deprecated
 func (rh fakeIntervalTestReqHandler) HandleRequest(ctx context.Context, dsInfo *datasources.DataSource, query legacydata.DataQuery) (
 	legacydata.DataResponse, error) {
 	q := query.Queries[0]
@@ -135,10 +137,11 @@ func (rh fakeIntervalTestReqHandler) HandleRequest(ctx context.Context, dsInfo *
 	return rh.response, nil
 }
 
-//nolint: staticcheck // legacydata.DataResponse deprecated
+//nolint:staticcheck // legacydata.DataResponse deprecated
 func applyScenario(t *testing.T, timeRange string, dataSourceJsonData *simplejson.Json, queryModel string, verifier func(query legacydata.DataSubQuery)) {
 	t.Run("desc", func(t *testing.T) {
-		store := mockstore.NewSQLStoreMock()
+		db := dbtest.NewFakeDB()
+		store := alerting.ProvideAlertStore(db, localcache.ProvideService(), &setting.Cfg{}, nil)
 
 		ctx := &queryIntervalTestContext{}
 		ctx.result = &alerting.EvalContext{

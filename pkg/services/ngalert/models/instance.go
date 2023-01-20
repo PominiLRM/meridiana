@@ -48,22 +48,10 @@ func (i InstanceStateType) IsValid() bool {
 		i == InstanceStateError
 }
 
-// GetAlertInstanceQuery is the query for retrieving/deleting an alert definition by ID.
-// nolint:unused
-type GetAlertInstanceQuery struct {
-	RuleOrgID int64
-	RuleUID   string
-	Labels    InstanceLabels
-
-	Result *AlertInstance
-}
-
 // ListAlertInstancesQuery is the query list alert Instances.
 type ListAlertInstancesQuery struct {
-	RuleOrgID   int64 `json:"-"`
-	RuleUID     string
-	State       InstanceStateType
-	StateReason string
+	RuleUID   string
+	RuleOrgID int64 `json:"-"`
 
 	Result []*AlertInstance
 }

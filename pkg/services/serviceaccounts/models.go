@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/grafana/pkg/services/accesscontrol"
 	"github.com/grafana/grafana/pkg/services/apikey"
 	"github.com/grafana/grafana/pkg/services/org"
+	"github.com/grafana/grafana/pkg/services/user"
 )
 
 var (
@@ -38,9 +39,10 @@ type CreateServiceAccountForm struct {
 
 // swagger:model
 type UpdateServiceAccountForm struct {
-	Name       *string       `json:"name"`
-	Role       *org.RoleType `json:"role"`
-	IsDisabled *bool         `json:"isDisabled"`
+	Name             *string       `json:"name"`
+	ServiceAccountID int64         `json:"serviceAccountId"`
+	Role             *org.RoleType `json:"role"`
+	IsDisabled       *bool         `json:"isDisabled"`
 }
 
 // swagger: model
@@ -77,8 +79,22 @@ type AddServiceAccountTokenCommand struct {
 	Result        *apikey.APIKey `json:"-"`
 }
 
+type SearchOrgServiceAccountsQuery struct {
+	OrgID        int64
+	Query        string
+	Filter       ServiceAccountFilter
+	Page         int
+	Limit        int
+	SignedInUser *user.SignedInUser
+}
+
+func (q *SearchOrgServiceAccountsQuery) SetDefaults() {
+	q.Page = 1
+	q.Limit = 100
+}
+
 // swagger: model
-type SearchServiceAccountsResult struct {
+type SearchOrgServiceAccountsResult struct {
 	// It can be used for pagination of the user list
 	// E.g. if totalCount is equal to 100 users and
 	// the perpage parameter is set to 10 then there are 10 pages of users.
@@ -130,3 +146,9 @@ type Stats struct {
 	ServiceAccounts int64 `xorm:"serviceaccounts"`
 	Tokens          int64 `xorm:"serviceaccount_tokens"`
 }
+
+// AccessEvaluator is used to protect the "Configuration > Service accounts" page access
+var AccessEvaluator = accesscontrol.EvalAny(
+	accesscontrol.EvalPermission(ActionRead),
+	accesscontrol.EvalPermission(ActionCreate),
+)

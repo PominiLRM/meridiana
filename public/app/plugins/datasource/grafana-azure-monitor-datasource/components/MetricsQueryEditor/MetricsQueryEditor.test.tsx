@@ -10,6 +10,7 @@ import createMockQuery from '../../__mocks__/query';
 import {
   createMockResourceGroupsBySubscription,
   createMockSubscriptions,
+  mockGetValidLocations,
   mockResourcesByResourceGroup,
 } from '../../__mocks__/resourcePickerRows';
 import ResourcePickerData from '../../resourcePicker/resourcePickerData';
@@ -31,17 +32,21 @@ const variableOptionGroup = {
 };
 
 export function createMockResourcePickerData() {
-  const mockDatasource = new ResourcePickerData(createMockInstanceSetttings());
+  const mockDatasource = createMockDatasource();
+  const mockResourcePicker = new ResourcePickerData(
+    createMockInstanceSetttings(),
+    mockDatasource.azureMonitorDatasource
+  );
 
-  mockDatasource.getSubscriptions = jest.fn().mockResolvedValue(createMockSubscriptions());
-  mockDatasource.getResourceGroupsBySubscriptionId = jest
+  mockResourcePicker.getSubscriptions = jest.fn().mockResolvedValue(createMockSubscriptions());
+  mockResourcePicker.getResourceGroupsBySubscriptionId = jest
     .fn()
     .mockResolvedValue(createMockResourceGroupsBySubscription());
-  mockDatasource.getResourcesForResourceGroup = jest.fn().mockResolvedValue(mockResourcesByResourceGroup());
-  mockDatasource.getResourceURIFromWorkspace = jest.fn().mockReturnValue('');
-  mockDatasource.getResourceURIDisplayProperties = jest.fn().mockResolvedValue({});
-
-  return mockDatasource;
+  mockResourcePicker.getResourcesForResourceGroup = jest.fn().mockResolvedValue(mockResourcesByResourceGroup());
+  mockResourcePicker.getResourceURIFromWorkspace = jest.fn().mockReturnValue('');
+  mockResourcePicker.getResourceURIDisplayProperties = jest.fn().mockResolvedValue({});
+  mockResourcePicker.getLogsLocations = jest.fn().mockResolvedValue(mockGetValidLocations());
+  return mockResourcePicker;
 }
 
 describe('MetricsQueryEditor', () => {
@@ -72,12 +77,46 @@ describe('MetricsQueryEditor', () => {
     expect(await screen.findByTestId('azure-monitor-metrics-query-editor-with-experimental-ui')).toBeInTheDocument();
   });
 
+  it('should show the current resource in the ResourcePicker', async () => {
+    const mockDatasource = createMockDatasource({ resourcePickerData: createMockResourcePickerData() });
+    const query = createMockQuery({
+      subscription: 'def-456',
+      azureMonitor: {
+        metricNamespace: 'Microsoft.Compute/virtualMachines',
+        resources: [
+          {
+            resourceGroup: 'dev-3',
+            resourceName: 'web-server',
+          },
+        ],
+      },
+    });
+    const onChange = jest.fn();
+
+    render(
+      <MetricsQueryEditor
+        data={mockPanelData}
+        query={query}
+        datasource={mockDatasource}
+        variableOptionGroup={variableOptionGroup}
+        onChange={onChange}
+        setError={() => {}}
+      />
+    );
+
+    const resourcePickerButton = await screen.findByRole('button', { name: 'web-server' });
+    expect(resourcePickerButton).toBeInTheDocument();
+    resourcePickerButton.click();
+
+    const selection = await screen.findAllByLabelText('web-server');
+    expect(selection).toHaveLength(2);
+  });
+
   it('should change resource when a resource is selected in the ResourcePicker', async () => {
     const mockDatasource = createMockDatasource({ resourcePickerData: createMockResourcePickerData() });
     const query = createMockQuery();
     delete query?.subscription;
-    delete query?.azureMonitor?.resourceGroup;
-    delete query?.azureMonitor?.resourceName;
+    delete query?.azureMonitor?.resources;
     delete query?.azureMonitor?.metricNamespace;
     const onChange = jest.fn();
 
@@ -120,8 +159,12 @@ describe('MetricsQueryEditor', () => {
         subscription: 'def-456',
         azureMonitor: expect.objectContaining({
           metricNamespace: 'microsoft.compute/virtualmachines',
-          resourceGroup: 'dev-3',
-          resourceName: 'web-server',
+          resources: [
+            expect.objectContaining({
+              resourceGroup: 'dev-3',
+              resourceName: 'web-server',
+            }),
+          ],
         }),
       })
     );

@@ -4,7 +4,6 @@ import { assertIsDefined } from 'test/helpers/asserts';
 
 import {
   ArrayVector,
-  DataFrame,
   DataQuery,
   DataQueryResponse,
   DataSourceApi,
@@ -12,33 +11,53 @@ import {
   DataSourceWithLogsVolumeSupport,
   LoadingState,
   MutableDataFrame,
-  PanelData,
   RawTimeRange,
 } from '@grafana/data';
-import { ExploreId, ExploreItemState, StoreState, ThunkDispatch } from 'app/types';
+import { ExploreId, ExploreItemState, StoreState, SupplementaryQueryType, ThunkDispatch } from 'app/types';
 
 import { reducerTester } from '../../../../test/core/redux/reducerTester';
 import { configureStore } from '../../../store/configureStore';
 import { setTimeSrv } from '../../dashboard/services/TimeSrv';
 
 import { createDefaultInitialState } from './helpers';
+import { saveCorrelationsAction } from './main';
 import {
   addQueryRowAction,
   addResultsToCache,
   cancelQueries,
   cancelQueriesAction,
-  cleanLogsVolumeAction,
+  cleanSupplementaryQueryAction,
   clearCache,
   importQueries,
   queryReducer,
   runQueries,
   scanStartAction,
   scanStopAction,
-  storeLogsVolumeDataProviderAction,
+  storeSupplementaryQueryDataProviderAction,
+  setSupplementaryQueryEnabled,
 } from './query';
 import { makeExplorePaneState } from './utils';
 
 const { testRange, defaultInitialState } = createDefaultInitialState();
+
+const datasources: DataSourceApi[] = [
+  {
+    name: 'testDs',
+    type: 'postgres',
+    uid: 'ds1',
+    getRef: () => {
+      return { type: 'postgres', uid: 'ds1' };
+    },
+  } as DataSourceApi<DataQuery, DataSourceJsonData, {}>,
+  {
+    name: 'testDs2',
+    type: 'postgres',
+    uid: 'ds2',
+    getRef: () => {
+      return { type: 'postgres', uid: 'ds2' };
+    },
+  } as DataSourceApi<DataQuery, DataSourceJsonData, {}>,
+];
 
 jest.mock('app/features/dashboard/services/TimeSrv', () => ({
   ...jest.requireActual('app/features/dashboard/services/TimeSrv'),
@@ -49,10 +68,15 @@ jest.mock('app/features/dashboard/services/TimeSrv', () => ({
 }));
 
 jest.mock('@grafana/runtime', () => ({
-  ...(jest.requireActual('@grafana/runtime') as unknown as object),
+  ...jest.requireActual('@grafana/runtime'),
   getTemplateSrv: () => ({
     updateTimeRange: jest.fn(),
   }),
+  getDataSourceSrv: () => {
+    return {
+      get: (uid?: string) => datasources.find((ds) => ds.uid === uid) || datasources[0],
+    };
+  },
 }));
 
 function setupQueryResponse(state: StoreState) {
@@ -74,28 +98,31 @@ function setupQueryResponse(state: StoreState) {
 }
 
 describe('runQueries', () => {
-  it('should pass dataFrames to state even if there is error in response', async () => {
+  const setupTests = () => {
     setTimeSrv({ init() {} } as any);
-    const { dispatch, getState } = configureStore({
+    return configureStore({
       ...(defaultInitialState as any),
     });
+  };
+
+  it('should pass dataFrames to state even if there is error in response', async () => {
+    const { dispatch, getState } = setupTests();
     setupQueryResponse(getState());
+    await dispatch(saveCorrelationsAction([]));
     await dispatch(runQueries(ExploreId.left));
     expect(getState().explore[ExploreId.left].showMetrics).toBeTruthy();
     expect(getState().explore[ExploreId.left].graphResult).toBeDefined();
   });
 
   it('should modify the request-id for log-volume queries', async () => {
-    setTimeSrv({ init() {} } as any);
-    const { dispatch, getState } = configureStore({
-      ...(defaultInitialState as any),
-    });
+    const { dispatch, getState } = setupTests();
     setupQueryResponse(getState());
+    await dispatch(saveCorrelationsAction([]));
     await dispatch(runQueries(ExploreId.left));
 
     const state = getState().explore[ExploreId.left];
     expect(state.queryResponse.request?.requestId).toBe('explore_left');
-    const datasource = state.datasourceInstance as any as DataSourceWithLogsVolumeSupport<DataQuery>;
+    const datasource = state.datasourceInstance as unknown as DataSourceWithLogsVolumeSupport<DataQuery>;
     expect(datasource.getLogsVolumeDataProvider).toBeCalledWith(
       expect.objectContaining({
         requestId: 'explore_left_log_volume',
@@ -104,15 +131,22 @@ describe('runQueries', () => {
   });
 
   it('should set state to done if query completes without emitting', async () => {
-    setTimeSrv({ init() {} } as any);
-    const { dispatch, getState } = configureStore({
-      ...(defaultInitialState as any),
-    });
+    const { dispatch, getState } = setupTests();
     const leftDatasourceInstance = assertIsDefined(getState().explore[ExploreId.left].datasourceInstance);
     jest.mocked(leftDatasourceInstance.query).mockReturnValueOnce(EMPTY);
+    await dispatch(saveCorrelationsAction([]));
     await dispatch(runQueries(ExploreId.left));
     await new Promise((resolve) => setTimeout(() => resolve(''), 500));
     expect(getState().explore[ExploreId.left].queryResponse.state).toBe(LoadingState.Done);
+  });
+
+  it('shows results only after correlations are loaded', async () => {
+    const { dispatch, getState } = setupTests();
+    setupQueryResponse(getState());
+    await dispatch(runQueries(ExploreId.left));
+    expect(getState().explore[ExploreId.left].graphResult).not.toBeDefined();
+    await dispatch(saveCorrelationsAction([]));
+    expect(getState().explore[ExploreId.left].graphResult).toBeDefined();
   });
 });
 
@@ -130,6 +164,7 @@ describe('running queries', () => {
           querySubscription: unsubscribable,
           queries: ['A'],
           range: testRange,
+          supplementaryQueries: { [SupplementaryQueryType.LogsVolume]: { enabled: true } },
         },
       },
 
@@ -145,8 +180,8 @@ describe('running queries', () => {
     expect(dispatchedActions).toEqual([
       scanStopAction({ exploreId }),
       cancelQueriesAction({ exploreId }),
-      storeLogsVolumeDataProviderAction({ exploreId, logsVolumeDataProvider: undefined }),
-      cleanLogsVolumeAction({ exploreId }),
+      storeSupplementaryQueryDataProviderAction({ exploreId, type: SupplementaryQueryType.LogsVolume }),
+      cleanSupplementaryQueryAction({ exploreId, type: SupplementaryQueryType.LogsVolume }),
     ]);
   });
 });
@@ -154,25 +189,6 @@ describe('running queries', () => {
 describe('importing queries', () => {
   describe('when importing queries between the same type of data source', () => {
     it('remove datasource property from all of the queries', async () => {
-      const datasources: DataSourceApi[] = [
-        {
-          name: 'testDs',
-          type: 'postgres',
-          uid: 'ds1',
-          getRef: () => {
-            return { type: 'postgres', uid: 'ds1' };
-          },
-        } as DataSourceApi<DataQuery, DataSourceJsonData, {}>,
-        {
-          name: 'testDs2',
-          type: 'postgres',
-          uid: 'ds2',
-          getRef: () => {
-            return { type: 'postgres', uid: 'ds2' };
-          },
-        } as DataSourceApi<DataQuery, DataSourceJsonData, {}>,
-      ];
-
       const { dispatch, getState }: { dispatch: ThunkDispatch; getState: () => StoreState } = configureStore({
         ...(defaultInitialState as any),
         explore: {
@@ -265,9 +281,9 @@ describe('reducer', () => {
           [ExploreId.left]: {
             ...defaultInitialState.explore[ExploreId.left],
             queryResponse: {
-              series: [{ name: 'test name' }] as DataFrame[],
+              series: [{ name: 'test name' }],
               state: LoadingState.Done,
-            } as PanelData,
+            },
             absoluteRange: { from: 1621348027000, to: 1621348050000 },
           },
         },
@@ -286,7 +302,7 @@ describe('reducer', () => {
         explore: {
           [ExploreId.left]: {
             ...defaultInitialState.explore[ExploreId.left],
-            queryResponse: { series: [{ name: 'test name' }] as DataFrame[], state: LoadingState.Loading } as PanelData,
+            queryResponse: { series: [{ name: 'test name' }], state: LoadingState.Loading },
             absoluteRange: { from: 1621348027000, to: 1621348050000 },
           },
         },
@@ -304,9 +320,9 @@ describe('reducer', () => {
           [ExploreId.left]: {
             ...defaultInitialState.explore[ExploreId.left],
             queryResponse: {
-              series: [{ name: 'test name' }] as DataFrame[],
+              series: [{ name: 'test name' }],
               state: LoadingState.Done,
-            } as PanelData,
+            },
             absoluteRange: { from: 1621348027000, to: 1621348050000 },
             cache: [
               {
@@ -418,8 +434,12 @@ describe('reducer', () => {
       expect(unsubscribes).toHaveLength(1);
       expect(unsubscribes[0]).toBeCalled();
 
-      expect(getState().explore[ExploreId.left].logsVolumeData).toBeUndefined();
-      expect(getState().explore[ExploreId.left].logsVolumeDataProvider).toBeUndefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].data
+      ).toBeUndefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].dataProvider
+      ).toBeUndefined();
     });
 
     it('should load logs volume after running the query', async () => {
@@ -433,13 +453,23 @@ describe('reducer', () => {
       };
       await dispatch(runQueries(ExploreId.left));
 
-      expect(getState().explore[ExploreId.left].logsVolumeData).toBeDefined();
-      expect(getState().explore[ExploreId.left].logsVolumeData!.state).toBe(LoadingState.Loading);
-      expect(getState().explore[ExploreId.left].logsVolumeDataProvider).toBeDefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].data
+      ).toBeDefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].data!.state
+      ).toBe(LoadingState.Loading);
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].dataProvider
+      ).toBeDefined();
 
       await dispatch(cancelQueries(ExploreId.left));
-      expect(getState().explore[ExploreId.left].logsVolumeData).toBeUndefined();
-      expect(getState().explore[ExploreId.left].logsVolumeDataProvider).toBeUndefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].data
+      ).toBeUndefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].data
+      ).toBeUndefined();
     });
 
     it('keeps complete log volume data when main query is canceled', async () => {
@@ -451,14 +481,69 @@ describe('reducer', () => {
       };
       await dispatch(runQueries(ExploreId.left));
 
-      expect(getState().explore[ExploreId.left].logsVolumeData).toBeDefined();
-      expect(getState().explore[ExploreId.left].logsVolumeData!.state).toBe(LoadingState.Done);
-      expect(getState().explore[ExploreId.left].logsVolumeDataProvider).toBeDefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].data
+      ).toBeDefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].data!.state
+      ).toBe(LoadingState.Done);
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].dataProvider
+      ).toBeDefined();
 
       await dispatch(cancelQueries(ExploreId.left));
-      expect(getState().explore[ExploreId.left].logsVolumeData).toBeDefined();
-      expect(getState().explore[ExploreId.left].logsVolumeData!.state).toBe(LoadingState.Done);
-      expect(getState().explore[ExploreId.left].logsVolumeDataProvider).toBeUndefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].data
+      ).toBeDefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].data!.state
+      ).toBe(LoadingState.Done);
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].dataProvider
+      ).toBeUndefined();
+    });
+
+    it('do not load logsVolume data when disabled', async () => {
+      // turn logsvolume off
+      dispatch(setSupplementaryQueryEnabled(ExploreId.left, false, SupplementaryQueryType.LogsVolume));
+      expect(getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].enabled).toBe(
+        false
+      );
+
+      // verify that if we run a query, it will not do logsvolume, but the Provider will still be set
+      await dispatch(runQueries(ExploreId.left));
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].data
+      ).toBeUndefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].dataSubscription
+      ).toBeUndefined();
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].dataProvider
+      ).toBeDefined();
+    });
+
+    it('load logsVolume data when it gets enabled', async () => {
+      // first it is disabled
+      dispatch(setSupplementaryQueryEnabled(ExploreId.left, false, SupplementaryQueryType.LogsVolume));
+
+      // runQueries sets up the logsVolume query, but does not run it
+      await dispatch(runQueries(ExploreId.left));
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].dataProvider
+      ).toBeDefined();
+
+      // we turn logsvolume on
+      await dispatch(setSupplementaryQueryEnabled(ExploreId.left, true, SupplementaryQueryType.LogsVolume));
+
+      // verify it was turned on
+      expect(getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].enabled).toBe(
+        true
+      );
+
+      expect(
+        getState().explore[ExploreId.left].supplementaryQueries[SupplementaryQueryType.LogsVolume].dataSubscription
+      ).toBeDefined();
     });
   });
 });

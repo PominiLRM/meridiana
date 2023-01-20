@@ -1,15 +1,29 @@
 import { AzureMetricDimension, AzureMonitorQuery } from '../../types';
 
-export function setMetricNamespace(query: AzureMonitorQuery, metricNamespace: string | undefined): AzureMonitorQuery {
-  if (query.azureMonitor?.metricNamespace === metricNamespace) {
+export function setCustomNamespace(query: AzureMonitorQuery, selection: string | undefined): AzureMonitorQuery {
+  if (query.azureMonitor?.customNamespace === selection) {
     return query;
+  }
+
+  if (selection?.toLowerCase().startsWith('microsoft.storage/storageaccounts/')) {
+    return {
+      ...query,
+      azureMonitor: {
+        ...query.azureMonitor,
+        metricNamespace: selection,
+        metricName: undefined,
+        aggregation: undefined,
+        timeGrain: '',
+        dimensionFilters: [],
+      },
+    };
   }
 
   return {
     ...query,
     azureMonitor: {
       ...query.azureMonitor,
-      metricNamespace: metricNamespace,
+      customNamespace: selection,
       metricName: undefined,
       aggregation: undefined,
       timeGrain: '',

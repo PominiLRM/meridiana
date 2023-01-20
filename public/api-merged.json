@@ -18,17 +18,13 @@
       "url": "https://grafana.com",
       "email": "hello@grafana.com"
     },
-    "license": {
-      "name": "GNU Affero General Public License v3.0",
-      "url": "https://www.gnu.org/licenses/agpl-3.0.en.html"
-    },
     "version": "0.0.1"
   },
   "basePath": "/api",
   "paths": {
     "/access-control/roles": {
       "get": {
-        "description": "Gets all existing roles. The response contains all global and organization local roles, for the organization which user is signed in.\n\nYou need to have a permission with action `roles:list` and scope `roles:*`.",
+        "description": "Gets all existing roles. The response contains all global and organization local roles, for the organization which user is signed in.\n\nYou need to have a permission with action `roles:read` and scope `roles:*`.",
         "tags": [
           "access_control",
           "enterprise"
@@ -124,7 +120,7 @@
           "enterprise"
         ],
         "summary": "Update a custom role.",
-        "operationId": "updateRoleWithPermissions",
+        "operationId": "updateRole",
         "parameters": [
           {
             "name": "body",
@@ -166,7 +162,7 @@
           "enterprise"
         ],
         "summary": "Delete a custom role.",
-        "operationId": "deleteCustomRole",
+        "operationId": "deleteRole",
         "parameters": [
           {
             "type": "boolean",
@@ -201,6 +197,78 @@
         }
       }
     },
+    "/access-control/roles/{roleUID}/assignments": {
+      "get": {
+        "description": "Get role assignments for the role with the given UID.\n\nYou need to have a permission with action `teams.roles:list` and scope `teams:id:*` and `users.roles:list` and scope `users:id:*`.",
+        "tags": [
+          "access_control",
+          "enterprise"
+        ],
+        "summary": "Get role assignments.",
+        "operationId": "getRoleAssignments",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "roleUID",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/getRoleAssignmentsResponse"
+          },
+          "403": {
+            "$ref": "#/responses/forbiddenError"
+          },
+          "404": {
+            "$ref": "#/responses/notFoundError"
+          },
+          "500": {
+            "$ref": "#/responses/internalServerError"
+          }
+        }
+      },
+      "put": {
+        "description": "Set role assignments for the role with the given UID.\n\nYou need to have a permission with action `teams.roles:add` and `teams.roles:remove` and scope `permissions:type:delegate`, and `users.roles:add` and `users.roles:remove` and scope `permissions:type:delegate`.",
+        "tags": [
+          "access_control",
+          "enterprise"
+        ],
+        "summary": "Set role assignments.",
+        "operationId": "setRoleAssignments",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "roleUID",
+            "in": "path",
+            "required": true
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/SetRoleAssignmentsCommand"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/setRoleAssignmentsResponse"
+          },
+          "403": {
+            "$ref": "#/responses/forbiddenError"
+          },
+          "404": {
+            "$ref": "#/responses/notFoundError"
+          },
+          "500": {
+            "$ref": "#/responses/internalServerError"
+          }
+        }
+      }
+    },
     "/access-control/status": {
       "get": {
         "description": "Returns an indicator to check if fine-grained access control is enabled or not.\n\nYou need to have a permission with action `status:accesscontrol` and scope `services:accesscontrol`.",
@@ -228,7 +296,7 @@
     },
     "/access-control/teams/{teamId}/roles": {
       "get": {
-        "description": "You need to have a permission with action `teams.roles:list` and scope `teams:id:\u003cteam ID\u003e`.",
+        "description": "You need to have a permission with action `teams.roles:read` and scope `teams:id:\u003cteam ID\u003e`.",
         "tags": [
           "access_control",
           "enterprise"
@@ -383,7 +451,7 @@
     },
     "/access-control/users/{userId}/roles": {
       "get": {
-        "description": "Lists the roles that have been directly assigned to a given user. The list does not include built-in roles (Viewer, Editor, Admin or Grafana Admin), and it does not include roles that have been inherited from a team.\n\nYou need to have a permission with action `users.roles:list` and scope `users:id:\u003cuser ID\u003e`.",
+        "description": "Lists the roles that have been directly assigned to a given user. The list does not include built-in roles (Viewer, Editor, Admin or Grafana Admin), and it does not include roles that have been inherited from a team.\n\nYou need to have a permission with action `users.roles:read` and scope `users:id:\u003cuser ID\u003e`.",
         "tags": [
           "access_control",
           "enterprise"
@@ -553,7 +621,7 @@
         "tags": [
           "ldap_debug"
         ],
-        "summary": "Returns the current state of the LDAP background sync integration",
+        "summary": "Returns the current state of the LDAP background sync integration.",
         "operationId": "getSyncStatus",
         "responses": {
           "200": {
@@ -1332,7 +1400,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/UpdateUserQuotaCmd"
+              "$ref": "#/definitions/UpdateQuotaCmd"
             }
           },
           {
@@ -1485,7 +1553,7 @@
         "tags": [
           "legacy_alerts_notification_channels"
         ],
-        "summary": "Get all notification channels (lookup)",
+        "summary": "Get all notification channels (lookup).",
         "operationId": "getAlertNotificationLookup",
         "responses": {
           "200": {
@@ -1549,7 +1617,7 @@
         "tags": [
           "legacy_alerts_notification_channels"
         ],
-        "summary": "Get notification channel by UID",
+        "summary": "Get notification channel by UID.",
         "operationId": "getAlertNotificationChannelByUID",
         "parameters": [
           {
@@ -2238,7 +2306,7 @@
         "tags": [
           "annotations"
         ],
-        "summary": "Get Annotation by Id.",
+        "summary": "Get Annotation by ID.",
         "operationId": "getAnnotationByID",
         "parameters": [
           {
@@ -2336,7 +2404,7 @@
         "tags": [
           "annotations"
         ],
-        "summary": "Patch Annotation",
+        "summary": "Patch Annotation.",
         "operationId": "patchAnnotation",
         "parameters": [
           {
@@ -2374,6 +2442,21 @@
       }
     },
     "/api/v1/provisioning/alert-rules": {
+      "get": {
+        "tags": [
+          "provisioning"
+        ],
+        "summary": "Get all the alert rules.",
+        "operationId": "RouteGetAlertRules",
+        "responses": {
+          "200": {
+            "description": "ProvisionedAlertRules",
+            "schema": {
+              "$ref": "#/definitions/ProvisionedAlertRules"
+            }
+          }
+        }
+      },
       "post": {
         "consumes": [
           "application/json"
@@ -2390,6 +2473,11 @@
             "schema": {
               "$ref": "#/definitions/ProvisionedAlertRule"
             }
+          },
+          {
+            "type": "string",
+            "name": "X-Disable-Provenance",
+            "in": "header"
           }
         ],
         "responses": {
@@ -2459,6 +2547,11 @@
             "schema": {
               "$ref": "#/definitions/ProvisionedAlertRule"
             }
+          },
+          {
+            "type": "string",
+            "name": "X-Disable-Provenance",
+            "in": "header"
           }
         ],
         "responses": {
@@ -2915,13 +3008,13 @@
         "tags": [
           "provisioning"
         ],
-        "summary": "Get all message templates.",
+        "summary": "Get all notification templates.",
         "operationId": "RouteGetTemplates",
         "responses": {
           "200": {
-            "description": "MessageTemplates",
+            "description": "NotificationTemplates",
             "schema": {
-              "$ref": "#/definitions/MessageTemplates"
+              "$ref": "#/definitions/NotificationTemplates"
             }
           },
           "404": {
@@ -2935,7 +3028,7 @@
         "tags": [
           "provisioning"
         ],
-        "summary": "Get a message template.",
+        "summary": "Get a notification template.",
         "operationId": "RouteGetTemplate",
         "parameters": [
           {
@@ -2948,9 +3041,9 @@
         ],
         "responses": {
           "200": {
-            "description": "MessageTemplate",
+            "description": "NotificationTemplate",
             "schema": {
-              "$ref": "#/definitions/MessageTemplate"
+              "$ref": "#/definitions/NotificationTemplate"
             }
           },
           "404": {
@@ -2979,15 +3072,15 @@
             "name": "Body",
             "in": "body",
             "schema": {
-              "$ref": "#/definitions/MessageTemplateContent"
+              "$ref": "#/definitions/NotificationTemplateContent"
             }
           }
         ],
         "responses": {
           "202": {
-            "description": "MessageTemplate",
+            "description": "NotificationTemplate",
             "schema": {
-              "$ref": "#/definitions/MessageTemplate"
+              "$ref": "#/definitions/NotificationTemplate"
             }
           },
           "400": {
@@ -3056,7 +3149,7 @@
         }
       },
       "post": {
-        "description": "Will return details of the created API key",
+        "description": "Will return details of the created API key.",
         "tags": [
           "api_keys"
         ],
@@ -4095,9 +4188,7 @@
             "name": "DatasourceProxyParam",
             "in": "body",
             "required": true,
-            "schema": {
-              "type": "object"
-            }
+            "schema": {}
           },
           {
             "type": "string",
@@ -4236,9 +4327,7 @@
             "name": "DatasourceProxyParam",
             "in": "body",
             "required": true,
-            "schema": {
-              "type": "object"
-            }
+            "schema": {}
           },
           {
             "type": "string",
@@ -5115,7 +5204,7 @@
         "tags": [
           "ds"
         ],
-        "summary": "DataSource query metrics with expressions",
+        "summary": "DataSource query metrics with expressions.",
         "operationId": "queryMetricsWithExpressions",
         "parameters": [
           {
@@ -5151,7 +5240,7 @@
     },
     "/folders": {
       "get": {
-        "description": "Returns all folders that the authenticated user has permission to view.",
+        "description": "Returns all folders that the authenticated user has permission to view.\nIf nested folders are enabled, it expects an additional query parameter with the parent folder UID.",
         "tags": [
           "folders"
         ],
@@ -5173,6 +5262,12 @@
             "description": "Page index for starting fetching folders",
             "name": "page",
             "in": "query"
+          },
+          {
+            "type": "string",
+            "description": "The parent folder UID",
+            "name": "parent_uid",
+            "in": "query"
           }
         ],
         "responses": {
@@ -5191,6 +5286,7 @@
         }
       },
       "post": {
+        "description": "If nested folders are enabled then it additionally expects the parent folder UID.",
         "tags": [
           "folders"
         ],
@@ -5298,6 +5394,7 @@
         }
       },
       "put": {
+        "description": "If nested folders are enabled then it optionally expects a new parent folder UID that moves the folder and\nincludes it into the response.",
         "tags": [
           "folders"
         ],
@@ -5345,7 +5442,7 @@
         }
       },
       "delete": {
-        "description": "Deletes an existing folder identified by UID along with all dashboards (and their alerts) stored in the folder. This operation cannot be reverted.",
+        "description": "Deletes an existing folder identified by UID along with all dashboards (and their alerts) stored in the folder. This operation cannot be reverted.\nIf nested folders are enabled then it also deletes all the subfolders.",
         "tags": [
           "folders"
         ],
@@ -5975,10 +6072,10 @@
     },
     "/org": {
       "get": {
-        "description": "Get current Organization",
         "tags": [
           "org"
         ],
+        "summary": "Get current Organization.",
         "operationId": "getCurrentOrg",
         "responses": {
           "200": {
@@ -6251,6 +6348,33 @@
         }
       }
     },
+    "/org/quotas": {
+      "get": {
+        "description": "If you are running Grafana Enterprise and have Fine-grained access control enabled, you need to have a permission with action `orgs.quotas:read` and scope `org:id:1` (orgIDScope).",
+        "tags": [
+          "getCurrentOrg"
+        ],
+        "summary": "Fetch Organization quota.",
+        "operationId": "getCurrentOrgQuota",
+        "responses": {
+          "200": {
+            "$ref": "#/responses/getQuotaResponse"
+          },
+          "401": {
+            "$ref": "#/responses/unauthorisedError"
+          },
+          "403": {
+            "$ref": "#/responses/forbiddenError"
+          },
+          "404": {
+            "$ref": "#/responses/notFoundError"
+          },
+          "500": {
+            "$ref": "#/responses/internalServerError"
+          }
+        }
+      }
+    },
     "/org/users": {
       "get": {
         "description": "Returns all org users within the current organization. Accessible to users with org admin role.\nIf you are running Grafana Enterprise and have Fine-grained access control enabled\nyou need to have a permission with action: `org.users:read` with scope `users:*`.",
@@ -6279,7 +6403,7 @@
         "tags": [
           "org"
         ],
-        "summary": "Add a new user to the current organization",
+        "summary": "Add a new user to the current organization.",
         "operationId": "addOrgUserToCurrentOrg",
         "parameters": [
           {
@@ -6350,7 +6474,7 @@
         "tags": [
           "org"
         ],
-        "summary": "Delete user in current organization",
+        "summary": "Delete user in current organization.",
         "operationId": "removeOrgUserForCurrentOrg",
         "parameters": [
           {
@@ -6384,7 +6508,7 @@
         "tags": [
           "org"
         ],
-        "summary": "Updates the given user",
+        "summary": "Updates the given user.",
         "operationId": "updateOrgUserForCurrentOrg",
         "parameters": [
           {
@@ -6429,10 +6553,10 @@
             "basic": []
           }
         ],
-        "description": "Search all Organizations",
         "tags": [
           "orgs"
         ],
+        "summary": "Search all Organizations.",
         "operationId": "searchOrgs",
         "parameters": [
           {
@@ -6721,7 +6845,7 @@
     },
     "/orgs/{org_id}/quotas": {
       "get": {
-        "description": "If you are running Grafana Enterprise and have Fine-grained access control enabled, you need to have a permission with action `orgs.quotas:read` and scope `org:id:1` (orgIDScope).\nlist",
+        "description": "If you are running Grafana Enterprise and have Fine-grained access control enabled, you need to have a permission with action `orgs.quotas:read` and scope `org:id:1` (orgIDScope).",
         "tags": [
           "orgs"
         ],
@@ -6774,7 +6898,7 @@
             "in": "body",
             "required": true,
             "schema": {
-              "$ref": "#/definitions/UpdateOrgQuotaCmd"
+              "$ref": "#/definitions/UpdateQuotaCmd"
             }
           },
           {
@@ -6852,7 +6976,7 @@
         "tags": [
           "orgs"
         ],
-        "summary": "Add a new user to the current organization",
+        "summary": "Add a new user to the current organization.",
         "operationId": "addOrgUser",
         "parameters": [
           {
@@ -6887,13 +7011,51 @@
         }
       }
     },
+    "/orgs/{org_id}/users/search": {
+      "get": {
+        "security": [
+          {
+            "basic": []
+          }
+        ],
+        "description": "If you are running Grafana Enterprise and have Fine-grained access control enabled\nyou need to have a permission with action: `org.users:read` with scope `users:*`.",
+        "tags": [
+          "orgs"
+        ],
+        "summary": "Search Users in Organization.",
+        "operationId": "searchOrgUsers",
+        "parameters": [
+          {
+            "type": "integer",
+            "format": "int64",
+            "name": "org_id",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/searchOrgUsersResponse"
+          },
+          "401": {
+            "$ref": "#/responses/unauthorisedError"
+          },
+          "403": {
+            "$ref": "#/responses/forbiddenError"
+          },
+          "500": {
+            "$ref": "#/responses/internalServerError"
+          }
+        }
+      }
+    },
     "/orgs/{org_id}/users/{user_id}": {
       "delete": {
         "description": "If you are running Grafana Enterprise and have Fine-grained access control enabled\nyou need to have a permission with action: `org.users:remove` with scope `users:*`.",
         "tags": [
           "orgs"
         ],
-        "summary": "Delete user in current organization",
+        "summary": "Delete user in current organization.",
         "operationId": "removeOrgUser",
         "parameters": [
           {
@@ -7493,11 +7655,11 @@
     },
     "/recording-rules": {
       "get": {
-        "description": "Lists all rules in the database: active or deleted",
         "tags": [
           "recording_rules",
           "enterprise"
         ],
+        "summary": "Lists all rules in the database: active or deleted.",
         "operationId": "listRecordingRules",
         "responses": {
           "200": {
@@ -7518,11 +7680,11 @@
         }
       },
       "put": {
-        "description": "Update the active status of a rule",
         "tags": [
           "recording_rules",
           "enterprise"
         ],
+        "summary": "Update the active status of a rule.",
         "operationId": "updateRecordingRule",
         "parameters": [
           {
@@ -7553,11 +7715,11 @@
         }
       },
       "post": {
-        "description": "Create a recording rule that is then registered and started",
         "tags": [
           "recording_rules",
           "enterprise"
         ],
+        "summary": "Create a recording rule that is then registered and started.",
         "operationId": "createRecordingRule",
         "parameters": [
           {
@@ -7630,11 +7792,11 @@
     },
     "/recording-rules/writer": {
       "get": {
-        "description": "Return the prometheus remote write target",
         "tags": [
           "recording_rules",
           "enterprise"
         ],
+        "summary": "Return the prometheus remote write target.",
         "operationId": "getRecordingRuleWriteTarget",
         "responses": {
           "200": {
@@ -7655,7 +7817,7 @@
         }
       },
       "post": {
-        "description": "It returns a 422 if there is not an existing prometheus data source configured",
+        "description": "It returns a 422 if there is not an existing prometheus data source configured.",
         "tags": [
           "recording_rules",
           "enterprise"
@@ -7757,7 +7919,7 @@
     },
     "/reports": {
       "get": {
-        "description": "Available to org admins only and with a valid or expired license\n\nYou need to have a permission with action `reports:read` with scope `reports:*`.",
+        "description": "Available to org admins only and with a valid or expired license.\n\nYou need to have a permission with action `reports:read` with scope `reports:*`.",
         "tags": [
           "reports",
           "enterprise"
@@ -7982,7 +8144,7 @@
     },
     "/reports/settings": {
       "get": {
-        "description": "Available to org admins only and with a valid or expired license\n\nYou need to have a permission with action `reports.settings:read`x.",
+        "description": "Available to org admins only and with a valid or expired license.\n\nYou need to have a permission with action `reports.settings:read`x.",
         "tags": [
           "reports",
           "enterprise"
@@ -8005,7 +8167,7 @@
         }
       },
       "post": {
-        "description": "Available to org admins only and with a valid or expired license\n\nYou need to have a permission with action `reports.settings:write`xx.",
+        "description": "Available to org admins only and with a valid or expired license.\n\nYou need to have a permission with action `reports.settings:write`xx.",
         "tags": [
           "reports",
           "enterprise"
@@ -8084,7 +8246,7 @@
     },
     "/reports/{id}": {
       "get": {
-        "description": "Available to org admins only and with a valid or expired license\n\nYou need to have a permission with action `reports:read` with scope `reports:id:\u003creport ID\u003e`.",
+        "description": "Available to org admins only and with a valid or expired license.\n\nYou need to have a permission with action `reports:read` with scope `reports:id:\u003creport ID\u003e`.",
         "tags": [
           "reports",
           "enterprise"
@@ -8122,7 +8284,7 @@
         }
       },
       "put": {
-        "description": "Available to org admins only and with a valid or expired license\n\nYou need to have a permission with action `reports.admin:write` with scope `reports:id:\u003creport ID\u003e`.",
+        "description": "Available to org admins only and with a valid or expired license.\n\nYou need to have a permission with action `reports.admin:write` with scope `reports:id:\u003creport ID\u003e`.",
         "tags": [
           "reports",
           "enterprise"
@@ -8168,7 +8330,7 @@
         }
       },
       "delete": {
-        "description": "Available to org admins only and with a valid or expired license\n\nYou need to have a permission with action `reports.delete` with scope `reports:id:\u003creport ID\u003e`.",
+        "description": "Available to org admins only and with a valid or expired license.\n\nYou need to have a permission with action `reports.delete` with scope `reports:id:\u003creport ID\u003e`.",
         "tags": [
           "reports",
           "enterprise"
@@ -8435,10 +8597,10 @@
     },
     "/search/sorting": {
       "get": {
-        "description": "List search sorting options",
         "tags": [
           "search"
         ],
+        "summary": "List search sorting options.",
         "operationId": "listSortOptions",
         "responses": {
           "200": {
@@ -8456,7 +8618,7 @@
         "tags": [
           "service_accounts"
         ],
-        "summary": "# Create service account",
+        "summary": "Create service account",
         "operationId": "createServiceAccount",
         "parameters": [
           {
@@ -8492,7 +8654,7 @@
         "tags": [
           "service_accounts"
         ],
-        "summary": "# Search service accounts with paging",
+        "summary": "Search service accounts with paging",
         "operationId": "searchOrgServiceAccountsWithPaging",
         "parameters": [
           {
@@ -8548,7 +8710,7 @@
         "tags": [
           "service_accounts"
         ],
-        "summary": "# Get single serviceaccount by Id",
+        "summary": "Get single serviceaccount by Id",
         "operationId": "retrieveServiceAccount",
         "parameters": [
           {
@@ -8585,7 +8747,7 @@
         "tags": [
           "service_accounts"
         ],
-        "summary": "# Delete service account",
+        "summary": "Delete service account",
         "operationId": "deleteServiceAccount",
         "parameters": [
           {
@@ -8619,7 +8781,7 @@
         "tags": [
           "service_accounts"
         ],
-        "summary": "# Update service account",
+        "summary": "Update service account",
         "operationId": "updateServiceAccount",
         "parameters": [
           {
@@ -8665,7 +8827,7 @@
         "tags": [
           "service_accounts"
         ],
-        "summary": "# Get service account tokens",
+        "summary": "Get service account tokens",
         "operationId": "listTokens",
         "parameters": [
           {
@@ -8699,7 +8861,7 @@
         "tags": [
           "service_accounts"
         ],
-        "summary": "# CreateNewToken adds a token to a service account",
+        "summary": "CreateNewToken adds a token to a service account",
         "operationId": "createToken",
         "parameters": [
           {
@@ -8748,7 +8910,7 @@
         "tags": [
           "service_accounts"
         ],
-        "summary": "# DeleteToken deletes service account tokens",
+        "summary": "DeleteToken deletes service account tokens",
         "operationId": "deleteToken",
         "parameters": [
           {
@@ -9840,6 +10002,74 @@
         }
       }
     },
+    "/user/stars/dashboard/uid/{dashboard_uid}": {
+      "post": {
+        "description": "Stars the given Dashboard for the actual user.",
+        "tags": [
+          "signed_in_user"
+        ],
+        "summary": "Star a dashboard.",
+        "operationId": "starDashboardByUID",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "dashboard_uid",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/okResponse"
+          },
+          "400": {
+            "$ref": "#/responses/badRequestError"
+          },
+          "401": {
+            "$ref": "#/responses/unauthorisedError"
+          },
+          "403": {
+            "$ref": "#/responses/forbiddenError"
+          },
+          "500": {
+            "$ref": "#/responses/internalServerError"
+          }
+        }
+      },
+      "delete": {
+        "description": "Deletes the starring of the given Dashboard for the actual user.",
+        "tags": [
+          "signed_in_user"
+        ],
+        "summary": "Unstar a dashboard.",
+        "operationId": "unstarDashboardByUID",
+        "parameters": [
+          {
+            "type": "string",
+            "name": "dashboard_uid",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/okResponse"
+          },
+          "400": {
+            "$ref": "#/responses/badRequestError"
+          },
+          "401": {
+            "$ref": "#/responses/unauthorisedError"
+          },
+          "403": {
+            "$ref": "#/responses/forbiddenError"
+          },
+          "500": {
+            "$ref": "#/responses/internalServerError"
+          }
+        }
+      }
+    },
     "/user/stars/dashboard/{dashboard_id}": {
       "post": {
         "description": "Stars the given Dashboard for the actual user.",
@@ -9848,6 +10078,7 @@
         ],
         "summary": "Star a dashboard.",
         "operationId": "starDashboard",
+        "deprecated": true,
         "parameters": [
           {
             "type": "string",
@@ -9881,6 +10112,7 @@
         ],
         "summary": "Unstar a dashboard.",
         "operationId": "unstarDashboard",
+        "deprecated": true,
         "parameters": [
           {
             "type": "string",
@@ -10259,27 +10491,6 @@
         "active_viewers": {
           "type": "integer",
           "format": "int64"
-        }
-      }
-    },
-    "AddBuiltInRoleCommand": {
-      "type": "object",
-      "properties": {
-        "builtInRole": {
-          "type": "string",
-          "enum": [
-            "Viewer",
-            " Editor",
-            " Admin",
-            " Grafana Admin"
-          ]
-        },
-        "global": {
-          "description": "A flag indicating if the assignment is global or not. If set to false, the default org ID of the authenticated user will be used from the request to create organization local assignment. Refer to the Built-in role assignments for more information.",
-          "type": "boolean"
-        },
-        "roleUid": {
-          "type": "string"
         }
       }
     },
@@ -10957,9 +11168,7 @@
     "AlertTestResultLog": {
       "type": "object",
       "properties": {
-        "data": {
-          "type": "object"
-        },
+        "data": {},
         "message": {
           "type": "string"
         }
@@ -11020,6 +11229,19 @@
         },
         "type": {
           "$ref": "#/definitions/RuleType"
+        }
+      }
+    },
+    "AlertingStatus": {
+      "type": "object",
+      "properties": {
+        "alertmanagersChoice": {
+          "type": "string",
+          "enum": [
+            "all",
+            "internal",
+            "external"
+          ]
         }
       }
     },
@@ -11091,7 +11313,7 @@
           "type": "string"
         },
         "for": {
-          "$ref": "#/definitions/Duration"
+          "type": "string"
         },
         "labels": {
           "type": "object",
@@ -11118,6 +11340,60 @@
           "type": "string"
         }
       }
+    },
+    "BacktestConfig": {
+      "type": "object",
+      "properties": {
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "condition": {
+          "type": "string"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AlertQuery"
+          }
+        },
+        "for": {
+          "$ref": "#/definitions/Duration"
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "interval": {
+          "$ref": "#/definitions/Duration"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "no_data_state": {
+          "type": "string",
+          "enum": [
+            "Alerting",
+            "NoData",
+            "OK"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "BacktestResult": {
+      "$ref": "#/definitions/Frame"
     },
     "BasicAuth": {
       "type": "object",
@@ -11275,6 +11551,10 @@
         "replyTo": {
           "type": "string"
         },
+        "scaleFactor": {
+          "type": "integer",
+          "format": "int64"
+        },
         "schedule": {
           "$ref": "#/definitions/ScheduleDTO"
         },
@@ -11304,6 +11584,9 @@
       "description": "Correlation is the model for correlations definitions",
       "type": "object",
       "properties": {
+        "config": {
+          "$ref": "#/definitions/CorrelationConfig"
+        },
         "description": {
           "description": "Description of the correlation",
           "type": "string",
@@ -11328,6 +11611,56 @@
           "description": "Unique identifier of the correlation",
           "type": "string",
           "example": "50xhMlg9k"
+        }
+      }
+    },
+    "CorrelationConfig": {
+      "type": "object",
+      "required": [
+        "field",
+        "type",
+        "target"
+      ],
+      "properties": {
+        "field": {
+          "description": "Field used to attach the correlation link",
+          "type": "string",
+          "example": "message"
+        },
+        "target": {
+          "description": "Target data query",
+          "type": "object",
+          "additionalProperties": false,
+          "example": {
+            "expr": "job=app"
+          }
+        },
+        "type": {
+          "$ref": "#/definitions/CorrelationConfigType"
+        }
+      }
+    },
+    "CorrelationConfigType": {
+      "type": "string"
+    },
+    "CorrelationConfigUpdateDTO": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "description": "Field used to attach the correlation link",
+          "type": "string",
+          "example": "message"
+        },
+        "target": {
+          "description": "Target data query",
+          "type": "object",
+          "additionalProperties": false,
+          "example": {
+            "expr": "job=app"
+          }
+        },
+        "type": {
+          "$ref": "#/definitions/CorrelationConfigType"
         }
       }
     },
@@ -11370,6 +11703,9 @@
       "description": "CreateCorrelationCommand is the command for creating a correlation",
       "type": "object",
       "properties": {
+        "config": {
+          "$ref": "#/definitions/CorrelationConfig"
+        },
         "description": {
           "description": "Optional description of the correlation",
           "type": "string",
@@ -11381,7 +11717,7 @@
           "example": "My label"
         },
         "targetUID": {
-          "description": "Target data source UID to which the correlation is created",
+          "description": "Target data source UID to which the correlation is created. required if config.type = query",
           "type": "string",
           "example": "PE1C5CBDA0504A6A3"
         }
@@ -11438,8 +11774,15 @@
       }
     },
     "CreateFolderCommand": {
+      "description": "CreateFolderCommand captures the information required by the folder service\nto create a folder.",
       "type": "object",
       "properties": {
+        "description": {
+          "type": "string"
+        },
+        "parentUid": {
+          "type": "string"
+        },
         "title": {
           "type": "string"
         },
@@ -11526,6 +11869,10 @@
         "replyTo": {
           "type": "string"
         },
+        "scaleFactor": {
+          "type": "integer",
+          "format": "int64"
+        },
         "schedule": {
           "$ref": "#/definitions/ScheduleDTO"
         },
@@ -11554,7 +11901,7 @@
         "items": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/PlaylistItemDTO"
+            "$ref": "#/definitions/PlaylistItem"
           }
         },
         "name": {
@@ -11871,10 +12218,10 @@
         "hasAcl": {
           "type": "boolean"
         },
-        "isFolder": {
+        "hasPublicDashboard": {
           "type": "boolean"
         },
-        "isHome": {
+        "isFolder": {
           "type": "boolean"
         },
         "isSnapshot": {
@@ -12063,8 +12410,8 @@
           "format": "date-time"
         },
         "createdBy": {
-          "description": "Since we get created by with left join user table, this can be null technically,\nbut in reality it will always be set, when database is not corrupted.",
-          "type": "string"
+          "type": "integer",
+          "format": "int64"
         },
         "dashboardId": {
           "type": "integer",
@@ -12072,6 +12419,9 @@
         },
         "dashboardUid": {
           "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/Json"
         },
         "id": {
           "type": "integer",
@@ -12095,7 +12445,7 @@
       }
     },
     "DashboardVersionMeta": {
-      "description": "DashboardVersionMeta extends the dashboard version model with the names\nassociated with the UserIds, overriding the field with the same name from\nthe DashboardVersion model.",
+      "description": "DashboardVersionMeta extends the DashboardVersionDTO with the names\nassociated with the UserIds, overriding the field with the same name from\nthe DashboardVersionDTO model.",
       "type": "object",
       "properties": {
         "created": {
@@ -12157,11 +12507,14 @@
       "title": "DataResponse contains the results from a DataQuery.",
       "properties": {
         "Error": {
-          "description": "Error is a property to be set if the the corresponding DataQuery has an error.",
+          "description": "Error is a property to be set if the corresponding DataQuery has an error.",
           "type": "string"
         },
         "Frames": {
           "$ref": "#/definitions/Frames"
+        },
+        "Status": {
+          "$ref": "#/definitions/Status"
         }
       }
     },
@@ -12369,27 +12722,9 @@
       }
     },
     "DataTopic": {
+      "description": "nolint:revive",
       "type": "string",
       "title": "DataTopic is used to identify which topic the frame should be assigned to."
-    },
-    "DateTime": {
-      "description": "DateTime is a time but it serializes to ISO8601 format with millis\nIt knows how to read 3 different variations of a RFC3339 date time.\nMost APIs we encounter want either millisecond or second precision times.\nThis just tries to make it worry-free.",
-      "type": "string",
-      "format": "date-time"
-    },
-    "DayOfMonthRange": {
-      "type": "object",
-      "title": "A DayOfMonthRange is an inclusive range that may have negative Beginning/End values that represent distance from the End of the month Beginning at -1.",
-      "properties": {
-        "Begin": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "End": {
-          "type": "integer",
-          "format": "int64"
-        }
-      }
     },
     "DeleteCorrelationResponseBody": {
       "type": "object",
@@ -12429,7 +12764,7 @@
       "type": "string"
     },
     "DsPermissionType": {
-      "description": "Datasource permission\nDescription:\n`0` - No Access\n`1` - Query\nEnum: 0,1",
+      "description": "Datasource permission\nDescription:\n`0` - No Access\n`1` - Query\n`2` - Edit\nEnum: 0,1,2",
       "type": "integer",
       "format": "int64"
     },
@@ -12447,6 +12782,9 @@
         },
         "auth_password": {
           "$ref": "#/definitions/Secret"
+        },
+        "auth_password_file": {
+          "type": "string"
         },
         "auth_secret": {
           "$ref": "#/definitions/Secret"
@@ -12601,7 +12939,7 @@
           }
         },
         "value": {
-          "$ref": "#/definitions/Float"
+          "type": "string"
         }
       }
     },
@@ -12692,16 +13030,12 @@
         "color": {
           "description": "Map values to a display color\nNOTE: this interface is under development in the frontend... so simple map for now",
           "type": "object",
-          "additionalProperties": {
-            "type": "object"
-          }
+          "additionalProperties": false
         },
         "custom": {
           "description": "Panel Specific Values",
           "type": "object",
-          "additionalProperties": {
-            "type": "object"
-          }
+          "additionalProperties": false
         },
         "decimals": {
           "type": "integer",
@@ -12777,20 +13111,6 @@
         }
       }
     },
-    "Float": {
-      "description": "It does not consider zero values to be null.\nIt will decode to null, not zero, if null.",
-      "type": "object",
-      "title": "Float is a nullable float64.",
-      "properties": {
-        "Float64": {
-          "type": "number",
-          "format": "double"
-        },
-        "Valid": {
-          "type": "boolean"
-        }
-      }
-    },
     "Folder": {
       "type": "object",
       "properties": {
@@ -12823,6 +13143,10 @@
           "type": "integer",
           "format": "int64"
         },
+        "parentUid": {
+          "description": "only used if nested folders are enabled",
+          "type": "string"
+        },
         "title": {
           "type": "string"
         },
@@ -12854,6 +13178,9 @@
         "id": {
           "type": "integer",
           "format": "int64"
+        },
+        "parent_uid": {
+          "type": "string"
         },
         "title": {
           "type": "string"
@@ -12905,8 +13232,7 @@
           "type": "string"
         },
         "custom": {
-          "description": "Custom datasource specific values.",
-          "type": "object"
+          "description": "Custom datasource specific values."
         },
         "dataTopic": {
           "$ref": "#/definitions/DataTopic"
@@ -13134,7 +13460,7 @@
           "type": "string"
         },
         "for": {
-          "$ref": "#/definitions/Duration"
+          "type": "string"
         },
         "grafana_alert": {
           "$ref": "#/definitions/GettableGrafanaRule"
@@ -13262,12 +13588,6 @@
     "GettableNGalertConfig": {
       "type": "object",
       "properties": {
-        "alertmanagers": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
         "alertmanagersChoice": {
           "type": "string",
           "enum": [
@@ -13380,6 +13700,9 @@
         "smtp_auth_password": {
           "$ref": "#/definitions/Secret"
         },
+        "smtp_auth_password_file": {
+          "type": "string"
+        },
         "smtp_auth_secret": {
           "$ref": "#/definitions/Secret"
         },
@@ -13434,6 +13757,10 @@
         "bearer_token_file": {
           "description": "The bearer token file for the targets. Deprecated in favour of\nAuthorization.CredentialsFile.",
           "type": "string"
+        },
+        "enable_http2": {
+          "description": "EnableHTTP2 specifies whether the client should configure HTTP2.\nThe omitempty flag is not set, because it would be hidden from the\nmarshalled configuration when set to false.",
+          "type": "boolean"
         },
         "follow_redirects": {
           "description": "FollowRedirects specifies whether the client should follow HTTP 3xx redirects.\nThe omitempty flag is not set, because it would be hidden from the\nmarshalled configuration when set to false.",
@@ -13591,6 +13918,9 @@
           "type": "integer",
           "format": "int64"
         },
+        "folderUid": {
+          "type": "string"
+        },
         "imported": {
           "type": "boolean"
         },
@@ -13625,20 +13955,6 @@
         },
         "uid": {
           "type": "string"
-        }
-      }
-    },
-    "InclusiveRange": {
-      "type": "object",
-      "title": "InclusiveRange is used to hold the Beginning and End values of many time interval components.",
-      "properties": {
-        "Begin": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "End": {
-          "type": "integer",
-          "format": "int64"
         }
       }
     },
@@ -13681,6 +13997,23 @@
       "type": "integer",
       "format": "int64",
       "title": "InspectType is a type for the Inspect property of a Notice."
+    },
+    "Item": {
+      "type": "object",
+      "title": "Item defines model for Item.",
+      "properties": {
+        "title": {
+          "description": "Title is an unused property -- it will be removed in the future",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/ItemType"
+        },
+        "value": {
+          "description": "Value depends on type and describes the playlist item.\n\ndashboard_by_id: The value is an internal numerical identifier set by Grafana. This\nis not portable as the numerical identifier is non-deterministic between different instances.\nWill be replaced by dashboard_by_uid in the future. (deprecated)\ndashboard_by_tag: The value is a tag which is set on any number of dashboards. All\ndashboards behind the tag will be added to the playlist.\ndashboard_by_uid: The value is the dashboard UID",
+          "type": "string"
+        }
+      }
     },
     "ItemDTO": {
       "type": "object",
@@ -13755,6 +14088,10 @@
           "format": "int64"
         }
       }
+    },
+    "ItemType": {
+      "type": "string",
+      "title": "Type of the item."
     },
     "Json": {
       "type": "object"
@@ -13952,6 +14289,10 @@
           "type": "integer",
           "format": "int64"
         },
+        "schemaVersion": {
+          "type": "integer",
+          "format": "int64"
+        },
         "type": {
           "type": "string"
         },
@@ -14106,7 +14447,7 @@
         "$ref": "#/definitions/Matcher"
       }
     },
-    "MessageTemplate": {
+    "NotificationTemplate": {
       "type": "object",
       "properties": {
         "name": {
@@ -14120,7 +14461,7 @@
         }
       }
     },
-    "MessageTemplateContent": {
+    "NotificationTemplateContent": {
       "type": "object",
       "properties": {
         "template": {
@@ -14128,10 +14469,10 @@
         }
       }
     },
-    "MessageTemplates": {
+    "NotificationTemplates": {
       "type": "array",
       "items": {
-        "$ref": "#/definitions/MessageTemplate"
+        "$ref": "#/definitions/NotificationTemplate"
       }
     },
     "Metadata": {
@@ -14196,20 +14537,6 @@
           "items": {
             "$ref": "#/definitions/QueryToMigrate"
           }
-        }
-      }
-    },
-    "MonthRange": {
-      "type": "object",
-      "title": "A MonthRange is an inclusive range between [1, 12] where 1 = January.",
-      "properties": {
-        "Begin": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "End": {
-          "type": "integer",
-          "format": "int64"
         }
       }
     },
@@ -14384,6 +14711,9 @@
             "type": "string"
           }
         },
+        "proxy_url": {
+          "$ref": "#/definitions/URL"
+        },
         "scopes": {
           "type": "array",
           "items": {
@@ -14514,6 +14844,12 @@
             "type": "boolean"
           }
         },
+        "authLabels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "avatarUrl": {
           "type": "string"
         },
@@ -14639,6 +14975,9 @@
     "PatchAnnotationsCmd": {
       "type": "object",
       "properties": {
+        "data": {
+          "$ref": "#/definitions/Json"
+        },
         "id": {
           "type": "integer",
           "format": "int64"
@@ -14714,7 +15053,7 @@
         "homeDashboardUID": {
           "type": "string"
         },
-        "locale": {
+        "language": {
           "type": "string"
         },
         "navbar": {
@@ -14808,36 +15147,15 @@
           "format": "int64"
         },
         "interval": {
+          "description": "Interval sets the time between switching views in a playlist.\nFIXME: Is this based on a standardized format or what options are available? Can datemath be used?",
           "type": "string"
         },
         "name": {
+          "description": "Name of the playlist.",
           "type": "string"
         },
         "uid": {
-          "type": "string"
-        }
-      }
-    },
-    "PlaylistDTO": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "interval": {
-          "type": "string"
-        },
-        "items": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/PlaylistItemDTO"
-          }
-        },
-        "name": {
-          "type": "string"
-        },
-        "uid": {
+          "description": "Unique playlist identifier. Generated on creation, either by the\ncreator of the playlist of by the application.",
           "type": "string"
         }
       }
@@ -14873,18 +15191,18 @@
         "$ref": "#/definitions/PlaylistDashboard"
       }
     },
-    "PlaylistItemDTO": {
+    "PlaylistItem": {
       "type": "object",
       "properties": {
-        "id": {
+        "Id": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "PlaylistId": {
           "type": "integer",
           "format": "int64"
         },
         "order": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "playlistid": {
           "type": "integer",
           "format": "int64"
         },
@@ -14964,9 +15282,7 @@
         "data": {
           "type": "string"
         },
-        "tags": {
-          "type": "object"
-        },
+        "tags": {},
         "what": {
           "type": "string"
         },
@@ -15103,7 +15419,7 @@
           "type": "string"
         },
         "for": {
-          "$ref": "#/definitions/Duration"
+          "type": "string"
         },
         "grafana_alert": {
           "$ref": "#/definitions/PostableGrafanaRule"
@@ -15195,12 +15511,6 @@
     "PostableNGalertConfig": {
       "type": "object",
       "properties": {
-        "alertmanagers": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
         "alertmanagersChoice": {
           "type": "string",
           "enum": [
@@ -15252,7 +15562,7 @@
         "homeDashboardUID": {
           "type": "string"
         },
-        "locale": {
+        "language": {
           "type": "string"
         },
         "navbar": {
@@ -15432,11 +15742,17 @@
         }
       }
     },
+    "ProvisionedAlertRules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ProvisionedAlertRule"
+      }
+    },
     "PushoverConfig": {
       "type": "object",
       "properties": {
         "expire": {
-          "$ref": "#/definitions/duration"
+          "type": "string"
         },
         "html": {
           "type": "boolean"
@@ -15451,7 +15767,7 @@
           "type": "string"
         },
         "retry": {
-          "$ref": "#/definitions/duration"
+          "type": "string"
         },
         "send_resolved": {
           "type": "boolean"
@@ -15599,16 +15915,12 @@
         "color": {
           "description": "Map values to a display color\nNOTE: this interface is under development in the frontend... so simple map for now",
           "type": "object",
-          "additionalProperties": {
-            "type": "object"
-          }
+          "additionalProperties": false
         },
         "custom": {
           "description": "Panel Specific Values",
           "type": "object",
-          "additionalProperties": {
-            "type": "object"
-          }
+          "additionalProperties": false
         },
         "decimals": {
           "type": "integer",
@@ -15694,6 +16006,30 @@
         },
         "starred": {
           "type": "boolean"
+        }
+      }
+    },
+    "QuotaDTO": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "org_id": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "target": {
+          "type": "string"
+        },
+        "used": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "user_id": {
+          "type": "integer",
+          "format": "int64"
         }
       }
     },
@@ -15800,9 +16136,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "additionalProperties": {
-              "type": "object"
-            }
+            "additionalProperties": false
           }
         },
         "range": {
@@ -15900,6 +16234,35 @@
         }
       }
     },
+    "RoleAssignmentsDTO": {
+      "type": "object",
+      "properties": {
+        "role_uid": {
+          "type": "string"
+        },
+        "service_accounts": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "teams": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      }
+    },
     "RoleDTO": {
       "type": "object",
       "properties": {
@@ -15958,10 +16321,10 @@
           }
         },
         "group_interval": {
-          "$ref": "#/definitions/Duration"
+          "type": "string"
         },
         "group_wait": {
-          "$ref": "#/definitions/Duration"
+          "type": "string"
         },
         "match": {
           "description": "Deprecated. Remove before v1.0 release.",
@@ -15992,7 +16355,7 @@
           "type": "string"
         },
         "repeat_interval": {
-          "$ref": "#/definitions/Duration"
+          "type": "string"
         },
         "routes": {
           "type": "array",
@@ -16267,7 +16630,7 @@
         }
       }
     },
-    "SearchServiceAccountsResult": {
+    "SearchOrgServiceAccountsResult": {
       "description": "swagger: model",
       "type": "object",
       "properties": {
@@ -16287,6 +16650,29 @@
         },
         "totalCount": {
           "description": "It can be used for pagination of the user list\nE.g. if totalCount is equal to 100 users and\nthe perpage parameter is set to 10 then there are 10 pages of users.",
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "SearchOrgUsersQueryResult": {
+      "type": "object",
+      "properties": {
+        "orgUsers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrgUserDTO"
+          }
+        },
+        "page": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "perPage": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "totalCount": {
           "type": "integer",
           "format": "int64"
         }
@@ -16456,6 +16842,32 @@
           "type": "string",
           "format": "date-time",
           "example": "2022-03-21T14:35:33Z"
+        }
+      }
+    },
+    "SetRoleAssignmentsCommand": {
+      "type": "object",
+      "properties": {
+        "service_accounts": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "teams": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "users": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int64"
+          }
         }
       }
     },
@@ -16680,12 +17092,8 @@
       "type": "string"
     },
     "Status": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        }
-      }
+      "type": "integer",
+      "format": "int64"
     },
     "Success": {
       "$ref": "#/definitions/ResponseDetails"
@@ -16751,11 +17159,18 @@
           "description": "The client key file for the targets.",
           "type": "string"
         },
+        "min_version": {
+          "$ref": "#/definitions/TLSVersion"
+        },
         "server_name": {
           "description": "Used to verify the hostname for the targets.",
           "type": "string"
         }
       }
+    },
+    "TLSVersion": {
+      "type": "integer",
+      "format": "uint16"
     },
     "TagsDTO": {
       "type": "object",
@@ -17099,13 +17514,16 @@
         "days_of_month": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/DayOfMonthRange"
+            "type": "string"
           }
+        },
+        "location": {
+          "type": "string"
         },
         "months": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/MonthRange"
+            "type": "string"
           }
         },
         "times": {
@@ -17117,13 +17535,13 @@
         "weekdays": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/WeekdayRange"
+            "type": "string"
           }
         },
         "years": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/YearRange"
+            "type": "string"
           }
         }
       }
@@ -17313,9 +17731,8 @@
       "type": "string"
     },
     "URL": {
-      "description": "The general form represented is:\n\n[scheme:][//[userinfo@]host][/]path[?query][#fragment]\n\nURLs that do not start with a slash after the scheme are interpreted as:\n\nscheme:opaque[?query][#fragment]\n\nNote that the Path field is stored in decoded form: /%47%6f%2f becomes /Go/.\nA consequence is that it is impossible to tell which slashes in the Path were\nslashes in the raw URL and which were %2f. This distinction is rarely important,\nbut when it is, the code should use RawPath, an optional field which only gets\nset if the default encoding is different from Path.\n\nURL's String method uses the EscapedPath method to obtain the path. See the\nEscapedPath method for more details.",
       "type": "object",
-      "title": "A URL represents a parsed URL (technically, a URI reference).",
+      "title": "URL is a custom URL type that allows validation at configuration load time.",
       "properties": {
         "ForceQuery": {
           "type": "boolean"
@@ -17325,6 +17742,9 @@
         },
         "Host": {
           "type": "string"
+        },
+        "OmitHost": {
+          "type": "boolean"
         },
         "Opaque": {
           "type": "string"
@@ -17426,6 +17846,9 @@
     "UpdateAnnotationsCmd": {
       "type": "object",
       "properties": {
+        "data": {
+          "$ref": "#/definitions/Json"
+        },
         "id": {
           "type": "integer",
           "format": "int64"
@@ -17453,6 +17876,9 @@
       "description": "UpdateCorrelationCommand is the command for updating a correlation",
       "type": "object",
       "properties": {
+        "config": {
+          "$ref": "#/definitions/CorrelationConfigUpdateDTO"
+        },
         "description": {
           "description": "Optional description of the correlation",
           "type": "string",
@@ -17541,18 +17967,27 @@
       }
     },
     "UpdateFolderCommand": {
+      "description": "UpdateFolderCommand captures the information required by the folder service\nto update a folder. Use Move to update a folder's parent folder.",
       "type": "object",
       "properties": {
+        "description": {
+          "description": "NewDescription it's an optional parameter used for overriding the existing folder description",
+          "type": "string"
+        },
         "overwrite": {
+          "description": "Overwrite only used by the legacy folder implementation",
           "type": "boolean"
         },
         "title": {
+          "description": "NewTitle it's an optional parameter used for overriding the existing folder title",
           "type": "string"
         },
         "uid": {
+          "description": "NewUID it's an optional parameter used for overriding the existing folder UID",
           "type": "string"
         },
         "version": {
+          "description": "Version only used by the legacy folder implementation",
           "type": "integer",
           "format": "int64"
         }
@@ -17589,18 +18024,6 @@
         }
       }
     },
-    "UpdateOrgQuotaCmd": {
-      "type": "object",
-      "properties": {
-        "limit": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "target": {
-          "type": "string"
-        }
-      }
-    },
     "UpdateOrgUserCommand": {
       "type": "object",
       "properties": {
@@ -17623,7 +18046,7 @@
         "items": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/PlaylistItemDTO"
+            "$ref": "#/definitions/PlaylistItem"
           }
         },
         "name": {
@@ -17646,7 +18069,7 @@
         "homeDashboardUID": {
           "type": "string"
         },
-        "locale": {
+        "language": {
           "type": "string"
         },
         "navbar": {
@@ -17670,6 +18093,18 @@
           ]
         },
         "weekStart": {
+          "type": "string"
+        }
+      }
+    },
+    "UpdateQuotaCmd": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "target": {
           "type": "string"
         }
       }
@@ -17723,6 +18158,10 @@
             "Editor",
             "Admin"
           ]
+        },
+        "serviceAccountId": {
+          "type": "integer",
+          "format": "int64"
         }
       }
     },
@@ -17732,7 +18171,7 @@
         "Email": {
           "type": "string"
         },
-        "Id": {
+        "ID": {
           "type": "integer",
           "format": "int64"
         },
@@ -17762,18 +18201,6 @@
           "type": "string"
         },
         "theme": {
-          "type": "string"
-        }
-      }
-    },
-    "UpdateUserQuotaCmd": {
-      "type": "object",
-      "properties": {
-        "limit": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "target": {
           "type": "string"
         }
       }
@@ -17879,26 +18306,6 @@
         "updatedAt": {
           "type": "string",
           "format": "date-time"
-        }
-      }
-    },
-    "UserQuotaDTO": {
-      "type": "object",
-      "properties": {
-        "limit": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "target": {
-          "type": "string"
-        },
-        "used": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "user_id": {
-          "type": "integer",
-          "format": "int64"
         }
       }
     },
@@ -18129,34 +18536,6 @@
         }
       }
     },
-    "WeekdayRange": {
-      "type": "object",
-      "title": "A WeekdayRange is an inclusive range between [0, 6] where 0 = Sunday.",
-      "properties": {
-        "Begin": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "End": {
-          "type": "integer",
-          "format": "int64"
-        }
-      }
-    },
-    "YearRange": {
-      "type": "object",
-      "title": "A YearRange is a positive inclusive range.",
-      "properties": {
-        "Begin": {
-          "type": "integer",
-          "format": "int64"
-        },
-        "End": {
-          "type": "integer",
-          "format": "int64"
-        }
-      }
-    },
     "alert": {
       "description": "Alert alert",
       "type": "object",
@@ -18199,6 +18578,7 @@
       }
     },
     "alertGroups": {
+      "description": "AlertGroups alert groups",
       "type": "array",
       "items": {
         "$ref": "#/definitions/alertGroup"
@@ -18302,10 +18682,8 @@
         }
       }
     },
-    "duration": {
-      "$ref": "#/definitions/Duration"
-    },
     "gettableAlert": {
+      "description": "GettableAlert gettable alert",
       "type": "object",
       "required": [
         "labels",
@@ -18368,6 +18746,7 @@
       }
     },
     "gettableSilence": {
+      "description": "GettableSilence gettable silence",
       "type": "object",
       "required": [
         "comment",
@@ -18416,9 +18795,40 @@
       }
     },
     "gettableSilences": {
+      "description": "GettableSilences gettable silences",
       "type": "array",
       "items": {
         "$ref": "#/definitions/gettableSilence"
+      }
+    },
+    "integration": {
+      "type": "object",
+      "required": [
+        "name",
+        "sendResolved"
+      ],
+      "properties": {
+        "lastNotifyAttempt": {
+          "description": "A timestamp indicating the last attempt to deliver a notification regardless of the outcome.\nFormat: date-time",
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastNotifyAttemptDuration": {
+          "description": "Duration of the last attempt to deliver a notification in humanized format (`1s` or `15ms`, etc).",
+          "type": "string"
+        },
+        "lastNotifyAttemptError": {
+          "description": "Error string for the last attempt to deliver a notification. Empty if the last attempt was successful.",
+          "type": "string"
+        },
+        "name": {
+          "description": "name",
+          "type": "string"
+        },
+        "sendResolved": {
+          "description": "send resolved",
+          "type": "boolean"
+        }
       }
     },
     "labelSet": {
@@ -18484,6 +18894,15 @@
         },
         "name": {
           "description": "name",
+          "type": "string"
+        }
+      }
+    },
+    "postSilencesOKBody": {
+      "type": "object",
+      "properties": {
+        "silenceID": {
+          "description": "silence ID",
           "type": "string"
         }
       }
@@ -18563,12 +18982,24 @@
       }
     },
     "receiver": {
-      "description": "Receiver receiver",
       "type": "object",
       "required": [
+        "active",
+        "integrations",
         "name"
       ],
       "properties": {
+        "active": {
+          "description": "active",
+          "type": "boolean"
+        },
+        "integrations": {
+          "description": "integrations",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/integration"
+          }
+        },
         "name": {
           "description": "name",
           "type": "string"
@@ -19334,14 +19765,14 @@
       "schema": {
         "type": "array",
         "items": {
-          "$ref": "#/definitions/PlaylistItemDTO"
+          "$ref": "#/definitions/Item"
         }
       }
     },
     "getPlaylistResponse": {
       "description": "(empty)",
       "schema": {
-        "$ref": "#/definitions/PlaylistDTO"
+        "$ref": "#/definitions/Playlist"
       }
     },
     "getPreferencesResponse": {
@@ -19379,7 +19810,7 @@
       "schema": {
         "type": "array",
         "items": {
-          "$ref": "#/definitions/UserQuotaDTO"
+          "$ref": "#/definitions/QuotaDTO"
         }
       }
     },
@@ -19402,6 +19833,12 @@
         "items": {
           "$ref": "#/definitions/ConfigDTO"
         }
+      }
+    },
+    "getRoleAssignmentsResponse": {
+      "description": "(empty)",
+      "schema": {
+        "$ref": "#/definitions/RoleAssignmentsDTO"
       }
     },
     "getRoleResponse": {
@@ -19737,6 +20174,15 @@
         "$ref": "#/definitions/QueryDataResponse"
       }
     },
+    "receiversResponse": {
+      "description": "(empty)",
+      "schema": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/receiver"
+        }
+      }
+    },
     "recordingRuleResponse": {
       "description": "(empty)",
       "schema": {
@@ -19773,7 +20219,13 @@
     "searchOrgServiceAccountsWithPagingResponse": {
       "description": "(empty)",
       "schema": {
-        "$ref": "#/definitions/SearchServiceAccountsResult"
+        "$ref": "#/definitions/SearchOrgServiceAccountsResult"
+      }
+    },
+    "searchOrgUsersResponse": {
+      "description": "(empty)",
+      "schema": {
+        "$ref": "#/definitions/SearchOrgUsersQueryResult"
       }
     },
     "searchOrgsResponse": {
@@ -19809,6 +20261,12 @@
         "$ref": "#/definitions/SearchUserQueryResult"
       }
     },
+    "setRoleAssignmentsResponse": {
+      "description": "(empty)",
+      "schema": {
+        "$ref": "#/definitions/RoleAssignmentsDTO"
+      }
+    },
     "testAlertResponse": {
       "description": "(empty)",
       "schema": {
@@ -19842,7 +20300,7 @@
     "updatePlaylistResponse": {
       "description": "(empty)",
       "schema": {
-        "$ref": "#/definitions/PlaylistDTO"
+        "$ref": "#/definitions/Playlist"
       }
     },
     "updateServiceAccountResponse": {
@@ -19870,6 +20328,17 @@
       "description": "(empty)",
       "schema": {
         "$ref": "#/definitions/UserProfileDTO"
+      }
+    },
+    "validateDashboardResponse": {
+      "description": "(empty)",
+      "headers": {
+        "isValid": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        }
       }
     }
   },

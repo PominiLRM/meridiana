@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/models"
+	"github.com/grafana/grafana/pkg/services/dashboards"
 	"github.com/grafana/grafana/pkg/services/live"
 	"github.com/grafana/grafana/pkg/services/rendering"
 )
@@ -28,12 +29,12 @@ type simpleCrawler struct {
 	glive                   *live.GrafanaLive
 	thumbnailRepo           thumbnailRepo
 	mode                    CrawlerMode
-	thumbnailKind           models.ThumbnailKind
+	thumbnailKind           ThumbnailKind
 	auth                    CrawlerAuth
 	opts                    rendering.Opts
 	status                  crawlStatus
 	statusMutex             sync.RWMutex
-	queue                   []*models.DashboardWithStaleThumbnail
+	queue                   []*DashboardWithStaleThumbnail
 	queueMutex              sync.Mutex
 	log                     log.Logger
 	renderingSessionByOrgId map[int64]rendering.Session
@@ -64,7 +65,7 @@ func newSimpleCrawler(renderService rendering.Service, gl *live.GrafanaLive, rep
 	return c
 }
 
-func (r *simpleCrawler) next(ctx context.Context) (*models.DashboardWithStaleThumbnail, rendering.Session, rendering.AuthOpts, error) {
+func (r *simpleCrawler) next(ctx context.Context) (*DashboardWithStaleThumbnail, rendering.Session, rendering.AuthOpts, error) {
 	r.queueMutex.Lock()
 	defer r.queueMutex.Unlock()
 
@@ -116,13 +117,13 @@ func (r *simpleCrawler) broadcastStatus() {
 	}
 }
 
-type byOrgId []*models.DashboardWithStaleThumbnail
+type byOrgId []*DashboardWithStaleThumbnail
 
 func (d byOrgId) Len() int           { return len(d) }
 func (d byOrgId) Less(i, j int) bool { return d[i].OrgId > d[j].OrgId }
 func (d byOrgId) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 
-func (r *simpleCrawler) Run(ctx context.Context, auth CrawlerAuth, mode CrawlerMode, theme models.Theme, thumbnailKind models.ThumbnailKind) error {
+func (r *simpleCrawler) Run(ctx context.Context, auth CrawlerAuth, mode CrawlerMode, theme models.Theme, thumbnailKind ThumbnailKind) error {
 	res, err := r.renderService.HasCapability(ctx, rendering.ScalingDownImages)
 	if err != nil {
 		return err
@@ -286,7 +287,7 @@ func (r *simpleCrawler) walk(ctx context.Context, id int) {
 			break
 		}
 
-		url := models.GetKioskModeDashboardUrl(item.Uid, item.Slug, r.opts.Theme)
+		url := dashboards.GetKioskModeDashboardURL(item.Uid, item.Slug, r.opts.Theme)
 		r.log.Info("Getting dashboard thumbnail", "walkerId", id, "dashboardUID", item.Uid, "url", url)
 
 		dsUids, err := r.dsUidsLookup(ctx, item.Uid, item.OrgId)
@@ -325,7 +326,7 @@ func (r *simpleCrawler) walk(ctx context.Context, id int) {
 					}
 				}()
 
-				thumbnailId, err := r.thumbnailRepo.saveFromFile(ctx, res.FilePath, models.DashboardThumbnailMeta{
+				thumbnailId, err := r.thumbnailRepo.saveFromFile(ctx, res.FilePath, DashboardThumbnailMeta{
 					DashboardUID: item.Uid,
 					OrgId:        item.OrgId,
 					Theme:        r.opts.Theme,

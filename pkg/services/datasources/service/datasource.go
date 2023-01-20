@@ -14,14 +14,15 @@ import (
 	sdkhttpclient "github.com/grafana/grafana-plugin-sdk-go/backend/httpclient"
 
 	"github.com/grafana/grafana/pkg/components/simplejson"
+	"github.com/grafana/grafana/pkg/infra/db"
 	"github.com/grafana/grafana/pkg/infra/httpclient"
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/services/accesscontrol"
 	"github.com/grafana/grafana/pkg/services/datasources"
 	"github.com/grafana/grafana/pkg/services/featuremgmt"
+	"github.com/grafana/grafana/pkg/services/quota"
 	"github.com/grafana/grafana/pkg/services/secrets"
 	"github.com/grafana/grafana/pkg/services/secrets/kvstore"
-	"github.com/grafana/grafana/pkg/services/sqlstore/db"
 	"github.com/grafana/grafana/pkg/setting"
 )
 
@@ -52,7 +53,8 @@ type cachedRoundTripper struct {
 func ProvideService(
 	db db.DB, secretsService secrets.Service, secretsStore kvstore.SecretsKVStore, cfg *setting.Cfg,
 	features featuremgmt.FeatureToggles, ac accesscontrol.AccessControl, datasourcePermissionsService accesscontrol.DatasourcePermissionsService,
-) *Service {
+	quotaService quota.Service,
+) (*Service, error) {
 	dslogger := log.New("datasources")
 	store := &SqlStore{db: db, logger: dslogger}
 	s := &Service{
@@ -73,7 +75,23 @@ func ProvideService(
 	ac.RegisterScopeAttributeResolver(NewNameScopeResolver(store))
 	ac.RegisterScopeAttributeResolver(NewIDScopeResolver(store))
 
-	return s
+	defaultLimits, err := readQuotaConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := quotaService.RegisterQuotaReporter(&quota.NewUsageReporter{
+		TargetSrv:     datasources.QuotaTargetSrv,
+		DefaultLimits: defaultLimits,
+		Reporter:      s.Usage,
+	}); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *Service) Usage(ctx context.Context, scopeParams *quota.ScopeParameters) (*quota.Map, error) {
+	return s.SQLStore.Count(ctx, scopeParams)
 }
 
 // DataSourceRetriever interface for retrieving a datasource.
@@ -398,6 +416,8 @@ func (s *Service) httpClientOptions(ctx context.Context, ds *datasources.DataSou
 
 	if ds.JsonData != nil {
 		opts.CustomOptions = ds.JsonData.MustMap()
+		// allow the plugin sdk to get the json data in JSONDataFromHTTPClientOptions
+		opts.CustomOptions["grafanaData"] = ds.JsonData.MustMap()
 	}
 	if ds.BasicAuth {
 		password, err := s.DecryptedBasicAuthPassword(ctx, ds)
@@ -423,7 +443,7 @@ func (s *Service) httpClientOptions(ctx context.Context, ds *datasources.DataSou
 
 	if ds.JsonData != nil && ds.JsonData.Get("sigV4Auth").MustBool(false) && setting.SigV4AuthEnabled {
 		opts.SigV4 = &sdkhttpclient.SigV4Config{
-			Service:       awsServiceNamespace(ds.Type),
+			Service:       awsServiceNamespace(ds.Type, ds.JsonData),
 			Region:        ds.JsonData.Get("sigV4Region").MustString(),
 			AssumeRoleARN: ds.JsonData.Get("sigV4AssumeRoleArn").MustString(),
 			AuthType:      ds.JsonData.Get("sigV4AuthType").MustString(),
@@ -527,8 +547,9 @@ func (s *Service) getCustomHeaders(jsonData *simplejson.Json, decryptedValues ma
 		return headers
 	}
 
-	index := 1
+	index := 0
 	for {
+		index++
 		headerNameSuffix := fmt.Sprintf("httpHeaderName%d", index)
 		headerValueSuffix := fmt.Sprintf("httpHeaderValue%d", index)
 
@@ -538,19 +559,33 @@ func (s *Service) getCustomHeaders(jsonData *simplejson.Json, decryptedValues ma
 			break
 		}
 
+		// skip a header with name that corresponds to auth proxy header's name
+		// to make sure that data source proxy isn't used to circumvent auth proxy.
+		// For more context take a look at CVE-2022-35957
+		if s.cfg.AuthProxyEnabled && http.CanonicalHeaderKey(key) == http.CanonicalHeaderKey(s.cfg.AuthProxyHeaderName) {
+			continue
+		}
+
 		if val, ok := decryptedValues[headerValueSuffix]; ok {
 			headers[key] = val
 		}
-		index++
 	}
 
 	return headers
 }
 
-func awsServiceNamespace(dsType string) string {
+func awsServiceNamespace(dsType string, jsonData *simplejson.Json) string {
 	switch dsType {
-	case datasources.DS_ES, datasources.DS_ES_OPEN_DISTRO, datasources.DS_ES_OPENSEARCH:
+	case datasources.DS_ES, datasources.DS_ES_OPEN_DISTRO:
 		return "es"
+	case datasources.DS_ES_OPENSEARCH:
+		serverless := jsonData.Get("serverless").MustBool()
+
+		if serverless {
+			return "aoss"
+		} else {
+			return "es"
+		}
 	case datasources.DS_PROMETHEUS, datasources.DS_ALERTMANAGER:
 		return "aps"
 	default:
@@ -583,4 +618,25 @@ func (s *Service) fillWithSecureJSONData(ctx context.Context, cmd *datasources.U
 	}
 
 	return nil
+}
+
+func readQuotaConfig(cfg *setting.Cfg) (*quota.Map, error) {
+	limits := &quota.Map{}
+
+	if cfg == nil {
+		return limits, nil
+	}
+
+	globalQuotaTag, err := quota.NewTag(datasources.QuotaTargetSrv, datasources.QuotaTarget, quota.GlobalScope)
+	if err != nil {
+		return limits, err
+	}
+	orgQuotaTag, err := quota.NewTag(datasources.QuotaTargetSrv, datasources.QuotaTarget, quota.OrgScope)
+	if err != nil {
+		return limits, err
+	}
+
+	limits.Set(globalQuotaTag, cfg.Quota.Global.DataSource)
+	limits.Set(orgQuotaTag, cfg.Quota.Org.DataSource)
+	return limits, nil
 }

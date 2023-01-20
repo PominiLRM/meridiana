@@ -4,6 +4,7 @@ import { connect, ConnectedProps } from 'react-redux';
 import { NavModelItem } from '@grafana/data';
 import { featureEnabled } from '@grafana/runtime';
 import { Page } from 'app/core/components/Page/Page';
+import config from 'app/core/config';
 import { contextSrv } from 'app/core/core';
 import { GrafanaRouteComponentProps } from 'app/core/navigation/types';
 import { StoreState, UserDTO, UserOrg, UserSession, SyncInfo, UserAdminError, AccessControlAction } from 'app/types';
@@ -37,6 +38,8 @@ interface OwnProps extends GrafanaRouteComponentProps<{ id: string }> {
   isLoading: boolean;
   error?: UserAdminError;
 }
+
+const SyncedOAuthLabels: string[] = ['GitHub', 'GitLab', 'OAuth'];
 
 export class UserAdminPage extends PureComponent<Props> {
   async componentDidMount() {
@@ -102,9 +105,38 @@ export class UserAdminPage extends PureComponent<Props> {
 
   render() {
     const { user, orgs, sessions, ldapSyncInfo, isLoading } = this.props;
-    const isLDAPUser = user && user.isExternal && user.authLabels && user.authLabels.includes('LDAP');
+    const isLDAPUser = user?.isExternal && user?.authLabels?.includes('LDAP');
+    const isJWTUser = user?.authLabels?.includes('JWT');
     const canReadSessions = contextSrv.hasPermission(AccessControlAction.UsersAuthTokenList);
     const canReadLDAPStatus = contextSrv.hasPermission(AccessControlAction.LDAPStatusRead);
+    const isOAuthUserWithSkippableSync =
+      user?.isExternal && user?.authLabels?.some((r) => SyncedOAuthLabels.includes(r));
+    const isSAMLUser = user?.isExternal && user?.authLabels?.includes('SAML');
+    const isGoogleUser = user?.isExternal && user?.authLabels?.includes('Google');
+    const isAuthProxyUser = user?.isExternal && user?.authLabels?.includes('Auth Proxy');
+    const isAzureADUser = user?.isExternal && user?.authLabels?.includes('AzureAD');
+    const isGrafanaComUser = user?.isExternal && user?.authLabels?.includes('grafana.com');
+    const isUserSynced =
+      !config.auth.DisableSyncLock &&
+      ((user?.isExternal &&
+        !(
+          isAuthProxyUser ||
+          isGoogleUser ||
+          isOAuthUserWithSkippableSync ||
+          isSAMLUser ||
+          isLDAPUser ||
+          isAzureADUser ||
+          isJWTUser ||
+          isGrafanaComUser
+        )) ||
+        (!config.auth.OAuthSkipOrgRoleUpdateSync && isOAuthUserWithSkippableSync) ||
+        (!config.auth.SAMLSkipOrgRoleSync && isSAMLUser) ||
+        (!config.auth.LDAPSkipOrgRoleSync && isLDAPUser) ||
+        (!config.auth.JWTAuthSkipOrgRoleSync && isJWTUser) ||
+        // both OAuthSkipOrgRoleUpdateSync and specific provider settings needs to be false for a user to be synced
+        (!config.auth.OAuthSkipOrgRoleUpdateSync && !config.auth.GrafanaComSkipOrgRoleSync && isGrafanaComUser) ||
+        (!config.auth.OAuthSkipOrgRoleUpdateSync && !config.auth.AzureADSkipOrgRoleSync && isAzureADUser) ||
+        (!config.auth.OAuthSkipOrgRoleUpdateSync && !config.auth.GoogleSkipOrgRoleSync && isGoogleUser));
 
     const pageNav: NavModelItem = {
       text: user?.login ?? '',
@@ -126,9 +158,13 @@ export class UserAdminPage extends PureComponent<Props> {
                 onUserEnable={this.onUserEnable}
                 onPasswordChange={this.onPasswordChange}
               />
-              {isLDAPUser && featureEnabled('ldapsync') && ldapSyncInfo && canReadLDAPStatus && (
-                <UserLdapSyncInfo ldapSyncInfo={ldapSyncInfo} user={user} onUserSync={this.onUserSync} />
-              )}
+              {!config.auth.LDAPSkipOrgRoleSync &&
+                isLDAPUser &&
+                featureEnabled('ldapsync') &&
+                ldapSyncInfo &&
+                canReadLDAPStatus && (
+                  <UserLdapSyncInfo ldapSyncInfo={ldapSyncInfo} user={user} onUserSync={this.onUserSync} />
+                )}
               <UserPermissions isGrafanaAdmin={user.isGrafanaAdmin} onGrafanaAdminChange={this.onGrafanaAdminChange} />
             </>
           )}
@@ -137,7 +173,7 @@ export class UserAdminPage extends PureComponent<Props> {
             <UserOrgs
               user={user}
               orgs={orgs}
-              isExternalUser={user?.isExternal}
+              isExternalUser={isUserSynced}
               onOrgRemove={this.onOrgRemove}
               onOrgRoleChange={this.onOrgRoleChange}
               onOrgAdd={this.onOrgAdd}
